@@ -21,6 +21,13 @@ impl From<ram::Error> for Error {
 }
 
 impl CPU {
+    pub fn new() -> CPU {
+        CPU {
+            ram: Ram::new(),
+            program_counter: 0,
+            stack_pointer: 0,
+        }
+    }
     /// Get the currently pointed-to instruction and increment the PC.
     fn fetch_instruction(&mut self) -> Result<Instruction, Error> {
         let result: u16 = *self.ram.mut_word(self.program_counter)?;

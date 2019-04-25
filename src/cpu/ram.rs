@@ -10,13 +10,13 @@ pub enum Error {
 const MEMORY_SIZE: usize = 0x10000;
 
 impl Ram {
-    fn new() -> Ram {
+    pub fn new() -> Ram {
         let mut memory = Vec::with_capacity(MEMORY_SIZE);
         memory.resize(MEMORY_SIZE, 0);
         Ram { memory: memory }
     }
     /// Get a mutable reference to a single byte at a particular address.
-    fn mut_byte(&mut self, address: u16) -> Result<&mut u8, Error> {
+    pub fn mut_byte(&mut self, address: u16) -> Result<&mut u8, Error> {
         // We don't _really_ need this check as long as we're using 0x10000 bytes, which translates to
         // u16::max_value(). However, in case we ever change that...
         if self.address_is_valid(address) {
