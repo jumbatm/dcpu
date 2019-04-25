@@ -1,0 +1,3 @@
+[submodule "dcpu-specifications"]
+	path = dcpu-specifications
+	url = git@github.com:lucaspiller/dcpu-specifications.git
