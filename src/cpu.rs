@@ -27,7 +27,7 @@ impl CPU {
         CPU {
             ram: Ram::new(),
             program_counter: 0,
-            stack_pointer: 0,
+            stack_pointer: 0xFFFF,
         }
     }
     /// Get the currently pointed-to instruction and increment the PC.

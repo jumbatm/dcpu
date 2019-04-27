@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 #[derive(Debug, PartialEq, Eq)]
-pub enum Opcode {
+pub enum BasicOp {
     SET,
     ADD,
     SUB,
@@ -31,7 +31,26 @@ pub enum Opcode {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum Register {
+pub enum SpecialOp {
+    JSR,
+    INT,
+    IAG,
+    IAS,
+    RFI,
+    IAQ,
+    HWN,
+    HWQ,
+    HWI,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Instruction {
+    Basic(BasicInstruction),
+    Special(SpecialInstruction),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Register {
     A,
     B,
     C,
@@ -46,7 +65,7 @@ enum Register {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum Operand {
+pub enum Operand {
     NextWordAsAddress,
     NextWordAsLiteral,
     Literal(i8),
@@ -58,10 +77,16 @@ enum Operand {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Instruction {
-    op: Opcode,
-    a: Operand,
+pub struct BasicInstruction {
+    op: BasicOp,
     b: Operand,
+    a: Operand,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SpecialInstruction {
+    op: SpecialOp,
+    a: Operand,
 }
 
 #[derive(Debug)]
@@ -69,51 +94,51 @@ pub enum Error {
     BadInstruction,
 }
 
-impl std::convert::TryFrom<u16> for Instruction {
+impl std::convert::TryFrom<u16> for BasicInstruction {
     type Error = Error;
     fn try_from(val: u16) -> Result<Self, Self::Error> {
         // Opcode is the lower 5 bits.
         let op = match val & (1 << 5) - 1 {
-            0x01 => Opcode::SET,
-            0x02 => Opcode::ADD,
-            0x03 => Opcode::SUB,
-            0x04 => Opcode::MUL,
-            0x05 => Opcode::MLI,
-            0x06 => Opcode::DIV,
-            0x07 => Opcode::DVI,
-            0x08 => Opcode::MOD,
-            0x09 => Opcode::MDI,
-            0x0a => Opcode::AND,
-            0x0b => Opcode::BOR,
-            0x0c => Opcode::XOR,
-            0x0d => Opcode::SHR,
-            0x0e => Opcode::ASR,
-            0x0f => Opcode::SHL,
-            0x10 => Opcode::IFB,
-            0x11 => Opcode::IFC,
-            0x12 => Opcode::IFE,
-            0x13 => Opcode::IFN,
-            0x14 => Opcode::IFG,
-            0x15 => Opcode::IFA,
-            0x16 => Opcode::IFL,
-            0x17 => Opcode::IFU,
-            0x1a => Opcode::ADX,
-            0x1b => Opcode::SBX,
-            0x1e => Opcode::STI,
-            0x1f => Opcode::STD,
+            0x01 => BasicOp::SET,
+            0x02 => BasicOp::ADD,
+            0x03 => BasicOp::SUB,
+            0x04 => BasicOp::MUL,
+            0x05 => BasicOp::MLI,
+            0x06 => BasicOp::DIV,
+            0x07 => BasicOp::DVI,
+            0x08 => BasicOp::MOD,
+            0x09 => BasicOp::MDI,
+            0x0a => BasicOp::AND,
+            0x0b => BasicOp::BOR,
+            0x0c => BasicOp::XOR,
+            0x0d => BasicOp::SHR,
+            0x0e => BasicOp::ASR,
+            0x0f => BasicOp::SHL,
+            0x10 => BasicOp::IFB,
+            0x11 => BasicOp::IFC,
+            0x12 => BasicOp::IFE,
+            0x13 => BasicOp::IFN,
+            0x14 => BasicOp::IFG,
+            0x15 => BasicOp::IFA,
+            0x16 => BasicOp::IFL,
+            0x17 => BasicOp::IFU,
+            0x1a => BasicOp::ADX,
+            0x1b => BasicOp::SBX,
+            0x1e => BasicOp::STI,
+            0x1f => BasicOp::STD,
             _ => return Err(Error::BadInstruction),
         };
 
         // Of the remaining 11 bits.
         let ab = val >> 5;
 
-        // b is lower 6 bits.
-        let b: u8 = (ab & ((1 << 6) - 1)) as u8;
+        // b is lower 5 bits.
+        let b: u8 = (ab & ((1 << 5) - 1)) as u8;
 
-        // a is the highest 5 bits.
+        // a is the highest 6 bits.
         let a: u8 = (ab >> 5) as u8;
 
-        Ok(Instruction {
+        Ok(BasicInstruction {
             op,
             a: Operand::from(a),
             b: Operand::from(b),
@@ -161,6 +186,41 @@ impl std::convert::TryFrom<u8> for Register {
     }
 }
 
+impl std::convert::TryFrom<u16> for SpecialInstruction {
+    type Error = Error;
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        use SpecialOp::*;
+        // aaaaaaooooo00000
+        let op = match value & ((1 << 5) - 1) << 5 {
+            0x01 => JSR,
+            0x08 => INT,
+            0x09 => IAG,
+            0x0a => IAS,
+            0x0b => RFI,
+            0x0c => IAQ,
+            0x10 => HWN,
+            0x11 => HWQ,
+            0x12 => HWI,
+            _ => return Err(Error::BadInstruction),
+        };
+
+        let a = Operand::from((value >> 10) as u8);
+
+        Ok(SpecialInstruction { op, a })
+    }
+}
+
+impl std::convert::TryFrom<u16> for Instruction {
+    type Error = Error;
+    fn try_from(val: u16) -> Result<Self, Self::Error> {
+        if val & (1 << 5) - 1 == 0 {
+            Ok(Instruction::Special(SpecialInstruction::try_from(val)?))
+        } else {
+            Ok(Instruction::Basic(BasicInstruction::try_from(val)?))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,6 +231,9 @@ mod tests {
     }
 
     #[allow(exceeding_bitshifts)]
+    /// Convenience function for creating the bytes representing a certain instruction. Note that the argument
+    /// order is that of the mnemonic, so ADD (which is 0x02) B ( which is 0x01), 12 (which is 0x32) should be
+    /// called as `make_instruction(0x02, 0x01, 0x32)`
     fn make_instruction(o: u8, b: u8, a: u8) -> u16 {
         let a: u16 = a as u16 & ((1 << 6) - 1);
         let b: u16 = b as u16 & ((1 << 5) - 1);
@@ -184,19 +247,42 @@ mod tests {
         assert_eq!(make_instruction(0x1F, 0x0, 0), 0b000000_00000_11111);
         assert_eq!(make_instruction(0x00, 0x1F, 0), 0b000000_11111_00000);
         assert_eq!(make_instruction(0x00, 0x0, 0x3F), 0b111111_00000_00000);
+        /* SUB C, -1 */
+        assert_eq!(make_instruction(0x3, 0x2, 0x20), 0b100000_00010_00011);
     }
     /*aaaaaa_bbbbb_ooooo */
+    /// FIXME: These tests aren't very thorough -- just enough to give a vague impression that the instruction
+    /// decoding happens correctly.
     #[test]
-    fn test_add_instruction() -> Result<(), Error> {
-        /* ADD A, 1 */
-        /* 0x02 0x0, 0x22 */
-        let inst = Instruction::try_from(make_instruction(0x02, 0x0, 0x22))?;
+    fn test_basic_instruction() -> Result<(), Error> {
+        /* SET B, 12 */
+        let inst = BasicInstruction::try_from(make_instruction(0x1, 0x1, 0x2D))?;
         assert_eq!(
             inst,
-            Instruction {
-                op: Opcode::ADD,
-                a: Operand::Literal(1),
+            BasicInstruction {
+                op: BasicOp::SET,
+                b: Operand::Register(Register::B),
+                a: Operand::Literal(12),
+            }
+        );
+        /* ADD B, 1: 0x02 0x0, 0x22 */
+        let inst = BasicInstruction::try_from(make_instruction(0x02, 0x0, 0x22))?;
+        assert_eq!(
+            inst,
+            BasicInstruction {
+                op: BasicOp::ADD,
                 b: Operand::Register(Register::A),
+                a: Operand::Literal(1),
+            }
+        );
+        /* SUB C, -1 */
+        let inst = BasicInstruction::try_from(make_instruction(0x3, 0x2, 0x20))?;
+        assert_eq!(
+            inst,
+            BasicInstruction {
+                op: BasicOp::SUB,
+                b: Operand::Register(Register::C),
+                a: Operand::Literal(-1),
             }
         );
         Ok(())
