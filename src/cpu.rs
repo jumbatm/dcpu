@@ -3,6 +3,7 @@ mod ram;
 
 use instruction::Instruction;
 use ram::Ram;
+use std::convert::TryFrom;
 
 pub struct CPU {
     ram: Ram,
@@ -12,6 +13,7 @@ pub struct CPU {
 
 enum Error {
     RamError(ram::Error),
+    InstructionError(instruction::Error),
 }
 
 impl From<ram::Error> for Error {
@@ -32,6 +34,9 @@ impl CPU {
     fn fetch_instruction(&mut self) -> Result<Instruction, Error> {
         let result: u16 = *self.ram.mut_word(self.program_counter)?;
         self.program_counter += 1;
-        Ok(Instruction::from(result))
+        match Instruction::try_from(result) {
+            Ok(instruction) => Ok(instruction),
+            Err(error_type) => Err(Error::InstructionError(error_type)),
+        }
     }
 }

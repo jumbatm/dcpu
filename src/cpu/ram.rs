@@ -30,15 +30,8 @@ impl Ram {
         (address as usize) < self.memory.len()
     }
 
-    /// Read the value at a certain address.
+    /// Read the value at a certain address. Always performs word-aligned access.
     pub fn mut_word(&mut self, address: u16) -> Result<&mut u16, Error> {
-        /*
-        unsafe {
-            let val16: &mut u16 = std::mem::transmute(&mut [
-                self.mut_byte(address)?.clone(),
-                self.mut_byte(address + 1)?.clone(),
-            ]);
-            */
         if self.address_is_valid(address + 1) {
             unsafe {
                 let r: &mut u8 = self.mut_byte(address)?;
