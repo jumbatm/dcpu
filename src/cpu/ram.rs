@@ -15,7 +15,8 @@ impl Ram {
         memory.resize(MEMORY_SIZE, 0);
         Ram { memory: memory }
     }
-    /// Get a mutable reference to a single byte at a particular address.
+    /// Get a mutable reference to a single byte at a particular address. TODO: Make behave as if it were
+    /// little-endian, no matter what the host architecture is.
     pub fn mut_byte(&mut self, address: u16) -> Result<&mut u8, Error> {
         // We don't _really_ need this check as long as we're using 0x10000 bytes, which translates to
         // u16::max_value(). However, in case we ever change that...
@@ -30,13 +31,11 @@ impl Ram {
         (address as usize) < self.memory.len()
     }
 
-    /// Read the value at a certain address. Always performs word-aligned access.
+    /// Read the value at a certain address.
     pub fn mut_word(&mut self, address: u16) -> Result<&mut u16, Error> {
         if self.address_is_valid(address + 1) {
-            unsafe {
-                let r: &mut u8 = self.mut_byte(address)?;
-                Ok(std::mem::transmute(r as *mut u8 as *mut u16))
-            }
+            let r: &mut u8 = self.mut_byte(address)?;
+            Ok(unsafe { &mut *(r as *mut u8 as *mut u16) })
         } else {
             Err(Error::AccessViolation(address))
         }
