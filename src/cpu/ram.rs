@@ -31,7 +31,7 @@ impl Ram {
         (address as usize) < self.memory.len()
     }
 
-    /// Read the value at a certain address.
+    /// Get the value at a certain address. Word-unaligned access is allowed.
     pub fn mut_word(&mut self, address: u16) -> Result<&mut u16, Error> {
         if self.address_is_valid(address + 1) {
             let r: &mut u8 = self.mut_byte(address)?;
@@ -40,6 +40,9 @@ impl Ram {
             Err(Error::AccessViolation(address))
         }
     }
+
+    /// Execute one cycle.
+    pub fn tick(&mut self) {}
 }
 
 mod tests {

@@ -70,23 +70,25 @@ pub enum Operand {
     NextWordAsLiteral,
     Literal(i8),
     Register(Register),
-    AsAddress(Register),
-    AsAddressPlusNextWord(Register),
+    InRegisterAsLiteral(Register),
+    InRegisterAsAddress(Register),
+    InRegisterAsAddressPlusNextWord(Register),
     PushOrPop,
     Peek,
+    Pick,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct BasicInstruction {
-    op: BasicOp,
-    b: Operand,
-    a: Operand,
+    pub op: BasicOp,
+    pub b: Operand,
+    pub a: Operand,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SpecialInstruction {
-    op: SpecialOp,
-    a: Operand,
+    pub op: SpecialOp,
+    pub a: Operand,
 }
 
 #[derive(Debug)]
@@ -150,12 +152,14 @@ impl std::convert::From<u8> for Operand {
     fn from(value: u8) -> Self {
         use std::convert::TryFrom;
         match value & ((1 << 6) - 1) {
-            val @ 0x00...0x07 => Operand::Register(Register::try_from(val).unwrap()),
-            val @ 0x08...0x0f => Operand::AsAddress(Register::try_from(val).unwrap()),
-            val @ 0x10...0x17 => Operand::AsAddressPlusNextWord(Register::try_from(val).unwrap()),
+            val @ 0x00...0x07 => Operand::InRegisterAsLiteral(Register::try_from(val).unwrap()),
+            val @ 0x08...0x0f => Operand::InRegisterAsAddress(Register::try_from(val).unwrap()),
+            val @ 0x10...0x17 => {
+                Operand::InRegisterAsAddressPlusNextWord(Register::try_from(val).unwrap())
+            }
             0x18 => Operand::PushOrPop,
-            0x19 => Operand::AsAddress(Register::SP),
-            0x1a => Operand::Peek,
+            0x19 => Operand::Peek,
+            0x1a => Operand::Pick,
             0x1b => Operand::Register(Register::SP),
             0x1c => Operand::Register(Register::PC),
             0x1d => Operand::Register(Register::EX),
@@ -283,6 +287,27 @@ mod tests {
                 op: BasicOp::SUB,
                 b: Operand::Register(Register::C),
                 a: Operand::Literal(-1),
+            }
+        );
+
+        /* MUL X, 8 */
+        let inst = BasicInstruction::try_from(make_instruction(0x4, 0x3, 0x29))?;
+        assert_eq!(
+            inst,
+            BasicInstruction {
+                op: BasicOp::MUL,
+                b: Operand::Register(Register::X),
+                a: Operand::Literal(8),
+            }
+        );
+        /* MLI Y, 30 */
+        let inst = BasicInstruction::try_from(make_instruction(0x5, 0x4, 0x3f))?;
+        assert_eq!(
+            inst,
+            BasicInstruction {
+                op: BasicOp::MLI,
+                b: Operand::Register(Register::Y),
+                a: Operand::Literal(30),
             }
         );
         Ok(())
