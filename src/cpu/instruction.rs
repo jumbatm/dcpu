@@ -70,7 +70,6 @@ pub enum Operand {
     NextWordAsLiteral,
     Literal(i8),
     Register(Register),
-    InRegisterAsLiteral(Register),
     InRegisterAsAddress(Register),
     InRegisterAsAddressPlusNextWord(Register),
     PushOrPop,
@@ -152,7 +151,7 @@ impl std::convert::From<u8> for Operand {
     fn from(value: u8) -> Self {
         use std::convert::TryFrom;
         match value & ((1 << 6) - 1) {
-            val @ 0x00...0x07 => Operand::InRegisterAsLiteral(Register::try_from(val).unwrap()),
+            val @ 0x00...0x07 => Operand::Register(Register::try_from(val).unwrap()),
             val @ 0x08...0x0f => Operand::InRegisterAsAddress(Register::try_from(val).unwrap()),
             val @ 0x10...0x17 => {
                 Operand::InRegisterAsAddressPlusNextWord(Register::try_from(val).unwrap())
@@ -234,7 +233,6 @@ mod tests {
         assert_eq!(0xFFFF & 0b11111, (1 << 5) - 1);
     }
 
-    #[allow(exceeding_bitshifts)]
     /// Convenience function for creating the bytes representing a certain instruction. Note that the argument
     /// order is that of the mnemonic, so ADD (which is 0x02) B ( which is 0x01), 12 (which is 0x32) should be
     /// called as `make_instruction(0x02, 0x01, 0x32)`
