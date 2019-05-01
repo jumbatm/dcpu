@@ -90,7 +90,7 @@ impl CPU {
 
         fn get_reference_to_register<'a>(
             cpu: &'a mut CPU,
-            reg: instruction::Register,
+            reg: &instruction::Register,
         ) -> &'a mut u16 {
             use instruction::Register::*;
             match reg {
@@ -108,7 +108,7 @@ impl CPU {
             }
         };
 
-        fn resolve_operand_b(cpu: &mut CPU, b: Operand) -> Option<&mut u16> {
+        fn resolve_operand_b<'a>(cpu: &'a mut CPU, b: &Operand) -> Option<&'a mut u16> {
             Some(match b {
                 Operand::Literal(_) => {
                     // Attempting to write to a literal value is a no-op.
@@ -145,14 +145,14 @@ impl CPU {
                 }
             })
         };
-        fn resolve_operand_a(cpu: &mut CPU, a: Operand) -> u16 {
-            let a: u16 = match a {
+        fn resolve_operand_a(cpu: &mut CPU, a: &Operand) -> u16 {
+            let a: u16 = match *a {
                 Operand::Literal(v) => v as u16,
                 Operand::NextWordAsLiteral => {
                     let v = *cpu.increment_pc_and_mut().unwrap();
                     *cpu.ram.mut_word(v).unwrap()
                 }
-                Operand::InRegisterAsAddress(register) => {
+                Operand::InRegisterAsAddress(ref register) => {
                     let v = *get_reference_to_register(cpu, register);
                     *cpu.ram.mut_word(v).unwrap()
                 }
@@ -160,8 +160,8 @@ impl CPU {
                     let v = *cpu.increment_pc_and_mut().unwrap();
                     *cpu.ram.mut_word(v).unwrap()
                 }
-                Operand::Register(reg) => *get_reference_to_register(cpu, reg),
-                Operand::InRegisterAsAddressPlusNextWord(reg) => {
+                Operand::Register(ref reg) => *get_reference_to_register(cpu, reg),
+                Operand::InRegisterAsAddressPlusNextWord(ref reg) => {
                     let r = *get_reference_to_register(cpu, reg);
                     let v = *cpu.increment_pc_and_mut().unwrap();
                     *cpu.ram.mut_word(v + r).unwrap()
@@ -182,34 +182,31 @@ impl CPU {
         };
 
         // Fetch and decode an instruction.
-        match self.fetch_instruction() {
-            Some(instruction) => match instruction.unwrap() {
-                Instruction::Basic(instruction) => match instruction.op {
+        let instruction = self.fetch_instruction();
+        if let Some(instruction) = instruction {
+            let instruction: Instruction = instruction.unwrap();
+
+            if let Instruction::Basic(ref instruction) = instruction {
+                let a = resolve_operand_a(self, &instruction.a);
+                let b = resolve_operand_b(self, &instruction.b);
+                match instruction.op {
                     // At this level, we resolve operands to the corresponding u16 contained with ram.
                     BasicOp::SET => {
-                        let a = resolve_operand_a(self, instruction.a);
-                        let b = resolve_operand_b(self, instruction.b);
                         if let Some(b) = b {
                             *b = a;
                         }
                     }
                     BasicOp::ADD => {
-                        let a = resolve_operand_a(self, instruction.a);
-                        let b = resolve_operand_b(self, instruction.b);
                         if let Some(b) = b {
                             *b += a;
                         }
                     }
                     BasicOp::SUB => {
-                        let a = resolve_operand_a(self, instruction.a);
-                        let b = resolve_operand_b(self, instruction.b);
                         if let Some(b) = b {
                             *b -= a;
                         }
                     }
                     BasicOp::MUL => {
-                        let a = resolve_operand_a(self, instruction.a);
-                        let b = resolve_operand_b(self, instruction.b);
                         if let Some(b) = b {
                             let full_result: u32 = (*b as u32) * (a as u32);
                             // Overflow register will contain the upper 16 bits.
@@ -220,8 +217,6 @@ impl CPU {
                         }
                     }
                     BasicOp::MLI => {
-                        let a = resolve_operand_a(self, instruction.a);
-                        let b = resolve_operand_b(self, instruction.b);
                         if let Some(b) = b {
                             unsafe {
                                 let b_signed: i16 = std::mem::transmute(*b);
@@ -241,8 +236,6 @@ impl CPU {
                         }
                     }
                     BasicOp::DIV => {
-                        let a = resolve_operand_a(self, instruction.a);
-                        let b = resolve_operand_b(self, instruction.b);
                         if let Some(b) = b {
                             // Division by zero causes EX and B to be set to zero.
                             if a == 0 {
@@ -258,9 +251,6 @@ impl CPU {
                     }
                     BasicOp::DVI => {
                         // Like DIV, but treat b and a as signed.
-                        let a = resolve_operand_a(self, instruction.a);
-                        let b = resolve_operand_b(self, instruction.b);
-
                         if let Some(b) = b {
                             let a_signed: i16;
                             let b_signed: i16;
@@ -275,11 +265,6 @@ impl CPU {
                         }
                     }
                     BasicOp::MOD => {
-                        let (a, b) = (
-                            resolve_operand_a(self, instruction.a),
-                            resolve_operand_b(self, instruction.b),
-                        );
-
                         if let Some(b) = b {
                             if a == 0 {
                                 *b = 0;
@@ -289,10 +274,6 @@ impl CPU {
                         }
                     }
                     BasicOp::MDI => {
-                        let (a, b) = (
-                            resolve_operand_a(self, instruction.a),
-                            resolve_operand_b(self, instruction.b),
-                        );
                         if let Some(b) = b {
                             if a == 0 {
                                 return;
@@ -307,37 +288,21 @@ impl CPU {
                         }
                     }
                     BasicOp::AND => {
-                        let (a, b) = (
-                            resolve_operand_a(self, instruction.a),
-                            resolve_operand_b(self, instruction.b),
-                        );
                         if let Some(b) = b {
                             *b &= a;
                         }
                     }
                     BasicOp::BOR => {
-                        let (a, b) = (
-                            resolve_operand_a(self, instruction.a),
-                            resolve_operand_b(self, instruction.b),
-                        );
                         if let Some(b) = b {
                             *b |= a;
                         }
                     }
                     BasicOp::XOR => {
-                        let (a, b) = (
-                            resolve_operand_a(self, instruction.a),
-                            resolve_operand_b(self, instruction.b),
-                        );
                         if let Some(b) = b {
                             *b ^= a;
                         }
                     }
                     BasicOp::SHR => {
-                        let (a, b) = (
-                            resolve_operand_a(self, instruction.a),
-                            resolve_operand_b(self, instruction.b),
-                        );
                         if let Some(b) = b {
                             // Perform right shift on a. Rust will perform logical shifts on unsigned types, and
                             // arithmetic shifts on signed types.
@@ -362,10 +327,14 @@ impl CPU {
                     _ => {
                         panic!("Unimplemented instruction! {:?}", instruction);
                     }
-                },
-                Instruction::Special(instruction) => {}
-            },
-            None => panic!("End of ram."), // TODO: Replace with appropriate behaviour.
-        };
+                };
+            } else if let Instruction::Special(instruction) = instruction {
+                // Do something
+            } else {
+                unreachable!();
+            }
+        } else {
+            panic!("End of ram."); // TODO: Replace with appropriate behaviour.
+        }
     }
 }
