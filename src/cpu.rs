@@ -182,6 +182,23 @@ impl CPU {
             a
         };
 
+        fn arithmetic_shift(x: u16, num_bits: i8) -> u16 {
+            let shift_amount: u32 = num_bits as u32;
+            let x_transmuted: isize = unsafe { std::mem::transmute::<u16, i16>(x) } as isize;
+            let shift = if num_bits < 0 {
+                isize::wrapping_shl
+            } else if num_bits > 0 {
+                isize::wrapping_shr
+            } else {
+                return x;
+            };
+
+            let x_transmuted = shift(x_transmuted, shift_amount);
+            // Transmute back to usize.
+            let x_shifted: usize = unsafe { std::mem::transmute(x_transmuted) };
+            x_shifted as u16
+        }
+
         // Fetch and decode an instruction.
         let instruction = self.fetch_instruction();
         if let Some(instruction) = instruction {
@@ -189,26 +206,19 @@ impl CPU {
 
             if let Instruction::Basic(ref instruction) = instruction {
                 let a = resolve_operand_a(self, &instruction.a);
-                let b = resolve_operand_b(self, &instruction.b);
-                match instruction.op {
-                    // At this level, we resolve operands to the corresponding u16 contained with ram.
-                    BasicOp::SET => {
-                        if let Some(b) = b {
+                if let Some(b) = resolve_operand_b(self, &instruction.b) {
+                    match instruction.op {
+                        // At this level, we resolve operands to the corresponding u16 contained with ram.
+                        BasicOp::SET => {
                             *b = a;
                         }
-                    }
-                    BasicOp::ADD => {
-                        if let Some(b) = b {
+                        BasicOp::ADD => {
                             *b += a;
                         }
-                    }
-                    BasicOp::SUB => {
-                        if let Some(b) = b {
+                        BasicOp::SUB => {
                             *b -= a;
                         }
-                    }
-                    BasicOp::MUL => {
-                        if let Some(b) = b {
+                        BasicOp::MUL => {
                             let full_result: u32 = (*b as u32) * (a as u32);
                             // Overflow register will contain the upper 16 bits.
                             let overflow: u16 = ((full_result >> 16) & 0xFFFF) as u16;
@@ -216,9 +226,7 @@ impl CPU {
                             *b = (full_result & 0xFFFFu32) as u16;
                             self.register_ex = overflow;
                         }
-                    }
-                    BasicOp::MLI => {
-                        if let Some(b) = b {
+                        BasicOp::MLI => {
                             unsafe {
                                 let b_signed: i16 = std::mem::transmute(*b);
                                 let a_signed: i16 = std::mem::transmute(a);
@@ -235,9 +243,7 @@ impl CPU {
                                 self.register_ex = overflow;
                             }
                         }
-                    }
-                    BasicOp::DIV => {
-                        if let Some(b) = b {
+                        BasicOp::DIV => {
                             // Division by zero causes EX and B to be set to zero.
                             if a == 0 {
                                 *b = 0;
@@ -249,10 +255,8 @@ impl CPU {
                             // We fill EX up with the fractional part.
                             self.register_ex = ((((*b as u32) << 16) / (a as u32)) & 0xFFFF) as u16;
                         }
-                    }
-                    BasicOp::DVI => {
-                        // Like DIV, but treat b and a as signed.
-                        if let Some(b) = b {
+                        BasicOp::DVI => {
+                            // Like DIV, but treat b and a as signed.
                             let a_signed: i16;
                             let b_signed: i16;
                             unsafe {
@@ -264,18 +268,14 @@ impl CPU {
                             *b = (full_result & 0xFFFF) as u16;
                             self.register_ex = ((full_result >> 16) & 0xFFFF) as u16;
                         }
-                    }
-                    BasicOp::MOD => {
-                        if let Some(b) = b {
+                        BasicOp::MOD => {
                             if a == 0 {
                                 *b = 0;
                                 return;
                             }
                             *b = *b % a;
                         }
-                    }
-                    BasicOp::MDI => {
-                        if let Some(b) = b {
+                        BasicOp::MDI => {
                             if a == 0 {
                                 return;
                             }
@@ -287,24 +287,16 @@ impl CPU {
                             // of a/abs(a) * b/abs(b) * result
                             *b = unsafe { std::mem::transmute((b_signed % a_signed) as u16) };
                         }
-                    }
-                    BasicOp::AND => {
-                        if let Some(b) = b {
+                        BasicOp::AND => {
                             *b &= a;
                         }
-                    }
-                    BasicOp::BOR => {
-                        if let Some(b) = b {
+                        BasicOp::BOR => {
                             *b |= a;
                         }
-                    }
-                    BasicOp::XOR => {
-                        if let Some(b) = b {
+                        BasicOp::XOR => {
                             *b ^= a;
                         }
-                    }
-                    BasicOp::SHR => {
-                        if let Some(b) = b {
+                        BasicOp::SHR => {
                             // Perform right shift on a. Rust will perform logical shifts on unsigned types, and
                             // arithmetic shifts on signed types.
                             // DCPU-16 spec denotes it in Java's notation: >>> for logical shift (perform
@@ -315,20 +307,15 @@ impl CPU {
 
                             // Now we set EX to ((b << 16) >>> a & 0xFFFF).
                             // Transmute to isize so Rust will perform an arithmetic shift.
-                            let ex: isize = unsafe { std::mem::transmute::<u16, i16>(*b) } as isize;
-                            let ex = ex.wrapping_shl(16);
-                            // Transmute back to usize to get Rust to perform a logical shift.
-                            let ex: usize = unsafe { std::mem::transmute(ex) };
-                            let ex = ex >> a;
-                            // Clamp and store into EX.
-                            let ex = ex & 0xFFFF;
+                            let ex = arithmetic_shift(*b, -16) >> a;
                             self.register_ex = ex as u16;
                         }
-                    }
-                    _ => {
-                        panic!("Unimplemented instruction! {:?}", instruction);
-                    }
-                };
+                        BasicOp::ASR => {}
+                        _ => {
+                            panic!("Unimplemented instruction! {:?}", instruction);
+                        }
+                    };
+                }
             } else if let Instruction::Special(instruction) = instruction {
                 // Do something
             } else {
