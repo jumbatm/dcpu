@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 #[derive(Debug, PartialEq, Eq)]
 pub enum BasicOp {
     SET,
@@ -99,7 +98,7 @@ impl std::convert::TryFrom<u16> for BasicInstruction {
     type Error = Error;
     fn try_from(val: u16) -> Result<Self, Self::Error> {
         // Opcode is the lower 5 bits.
-        let op = match val & (1 << 5) - 1 {
+        let op = match val & ((1 << 5) - 1) {
             0x01 => BasicOp::SET,
             0x02 => BasicOp::ADD,
             0x03 => BasicOp::SUB,
@@ -216,7 +215,7 @@ impl std::convert::TryFrom<u16> for SpecialInstruction {
 impl std::convert::TryFrom<u16> for Instruction {
     type Error = Error;
     fn try_from(val: u16) -> Result<Self, Self::Error> {
-        if val & (1 << 5) - 1 == 0 {
+        if val & ((1 << 5) - 1) == 0 {
             Ok(Instruction::Special(SpecialInstruction::try_from(val)?))
         } else {
             Ok(Instruction::Basic(BasicInstruction::try_from(val)?))

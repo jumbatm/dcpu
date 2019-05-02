@@ -10,17 +10,17 @@ pub struct CPU {
     program_counter: u16,
     stack_pointer: u16,
     wait_ticks: u8,
-    register_A: u16,
-    register_B: u16,
-    register_C: u16,
-    register_X: u16,
-    register_Y: u16,
-    register_Z: u16,
-    register_I: u16,
-    register_J: u16,
-    register_SP: u16,
-    register_PC: u16,
-    register_EX: u16,
+    register_a: u16,
+    register_b: u16,
+    register_c: u16,
+    register_x: u16,
+    register_y: u16,
+    register_z: u16,
+    register_i: u16,
+    register_j: u16,
+    register_sp: u16,
+    register_pc: u16,
+    register_ex: u16,
     interrupt_address: u16,
 }
 
@@ -43,29 +43,30 @@ impl CPU {
             program_counter: 0,
             stack_pointer: 0xFFFF,
             wait_ticks: 0,
-            register_A: 0,
-            register_B: 0,
-            register_C: 0,
-            register_X: 0,
-            register_Y: 0,
-            register_Z: 0,
-            register_I: 0,
-            register_J: 0,
-            register_SP: 0,
-            register_PC: 0,
-            register_EX: 0,
+            register_a: 0,
+            register_b: 0,
+            register_c: 0,
+            register_x: 0,
+            register_y: 0,
+            register_z: 0,
+            register_i: 0,
+            register_j: 0,
+            register_sp: 0,
+            register_pc: 0,
+            register_ex: 0,
             interrupt_address: 0,
         }
     }
     /// Get a reference to the word pointed to by the PC. Then, increment the PC.    
     fn increment_pc_and_mut(&mut self) -> Option<&mut u16> {
-        if self.program_counter >= 0xFFFF {
-            return None;
-        }
         let result: &mut u16 = match self.ram.mut_word(self.program_counter) {
             Ok(word) => word,
-            Err(err) => return None,
+            Err(_) => return None,
         };
+        if self.program_counter == 0xFFFF {
+            self.program_counter = 0;
+            return None;
+        }
         self.program_counter += 1;
         Some(result)
     }
@@ -79,7 +80,7 @@ impl CPU {
 
     /// Fetch and execute an instruction, or pretend to be still be busy with an instruction, in which case
     /// nothing will be done for this tick.
-    pub fn tick<'a, 'b: 'a>(&'a mut self) {
+    pub fn tick(&mut self) {
         // We're still busy executing an instruction.
         if self.wait_ticks > 0 {
             self.wait_ticks -= 1;
@@ -94,17 +95,17 @@ impl CPU {
         ) -> &'a mut u16 {
             use instruction::Register::*;
             match reg {
-                A => &mut cpu.register_A,
-                B => &mut cpu.register_B,
-                C => &mut cpu.register_C,
-                X => &mut cpu.register_X,
-                Y => &mut cpu.register_Y,
-                Z => &mut cpu.register_Z,
-                I => &mut cpu.register_I,
-                J => &mut cpu.register_J,
+                A => &mut cpu.register_a,
+                B => &mut cpu.register_b,
+                C => &mut cpu.register_c,
+                X => &mut cpu.register_x,
+                Y => &mut cpu.register_y,
+                Z => &mut cpu.register_z,
+                I => &mut cpu.register_i,
+                J => &mut cpu.register_j,
                 SP => &mut cpu.stack_pointer,
                 PC => &mut cpu.program_counter,
-                EX => &mut cpu.register_EX,
+                EX => &mut cpu.register_ex,
             }
         };
 
@@ -213,7 +214,7 @@ impl CPU {
                             let overflow: u16 = ((full_result >> 16) & 0xFFFF) as u16;
                             // We store the lower 16 bits of the result in b.
                             *b = (full_result & 0xFFFFu32) as u16;
-                            self.register_EX = overflow;
+                            self.register_ex = overflow;
                         }
                     }
                     BasicOp::MLI => {
@@ -231,7 +232,7 @@ impl CPU {
                                 // We store the lower 16 bits of the result in b.
                                 *b = (full_result & 0xFFFF) as u16;
                                 // And the overflow in register_EX.
-                                self.register_EX = overflow;
+                                self.register_ex = overflow;
                             }
                         }
                     }
@@ -240,13 +241,13 @@ impl CPU {
                             // Division by zero causes EX and B to be set to zero.
                             if a == 0 {
                                 *b = 0;
-                                self.register_EX = 0;
+                                self.register_ex = 0;
                                 return;
                             }
                             // Otherwise, we perform unsigned division.
                             *b /= a;
                             // We fill EX up with the fractional part.
-                            self.register_EX = ((((*b as u32) << 16) / (a as u32)) & 0xFFFF) as u16;
+                            self.register_ex = ((((*b as u32) << 16) / (a as u32)) & 0xFFFF) as u16;
                         }
                     }
                     BasicOp::DVI => {
@@ -261,7 +262,7 @@ impl CPU {
                             let full_result = (a_signed as i32) * (b_signed as i32);
                             let full_result: u32 = unsafe { std::mem::transmute(full_result) };
                             *b = (full_result & 0xFFFF) as u16;
-                            self.register_EX = ((full_result >> 16) & 0xFFFF) as u16;
+                            self.register_ex = ((full_result >> 16) & 0xFFFF) as u16;
                         }
                     }
                     BasicOp::MOD => {
@@ -321,7 +322,7 @@ impl CPU {
                             let ex = ex >> a;
                             // Clamp and store into EX.
                             let ex = ex & 0xFFFF;
-                            self.register_EX = ex as u16;
+                            self.register_ex = ex as u16;
                         }
                     }
                     _ => {
@@ -331,6 +332,7 @@ impl CPU {
             } else if let Instruction::Special(instruction) = instruction {
                 // Do something
             } else {
+                // Instruction is neither Instruction::Basic nor Instruction::Special.
                 unreachable!();
             }
         } else {

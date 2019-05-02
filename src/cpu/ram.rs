@@ -11,9 +11,9 @@ const MEMORY_SIZE: usize = 0x10000;
 
 impl Ram {
     pub fn new() -> Ram {
-        let mut memory = Vec::with_capacity(MEMORY_SIZE);
-        memory.resize(MEMORY_SIZE, 0);
-        Ram { memory: memory }
+        Ram {
+            memory: vec![0; MEMORY_SIZE],
+        }
     }
     /// Get a mutable reference to a single byte at a particular address. TODO: Make behave as if it were
     /// little-endian, no matter what the host architecture is.
