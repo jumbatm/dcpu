@@ -226,6 +226,7 @@ impl std::convert::TryFrom<u16> for Instruction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::convert::TryFrom;
 
     #[test]
     fn test_bits() {
