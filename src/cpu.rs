@@ -199,6 +199,13 @@ impl CPU {
             x_shifted as u16
         }
 
+        fn as_signed(x: u16) -> i16 {
+            unsafe { std::mem::transmute(x) }
+        }
+        fn as_unsigned(x: i16) -> u16 {
+            unsafe { std::mem::transmute(x) }
+        }
+
         // Fetch and decode an instruction.
         let instruction = self.fetch_instruction();
         if let Some(instruction) = instruction {
@@ -227,21 +234,18 @@ impl CPU {
                             self.register_ex = overflow;
                         }
                         BasicOp::MLI => {
-                            unsafe {
-                                let b_signed: i16 = std::mem::transmute(*b);
-                                let a_signed: i16 = std::mem::transmute(a);
-                                // Perform the multiplication in a signed way.
-                                let full_result: i32 = (b_signed as i32) * (a_signed as i32);
-                                // Then reinterpret the result as unsigned.
-                                let full_result: u32 = std::mem::transmute(full_result);
+                            let b_signed: i16 = as_signed(*b);
+                            let a_signed: i16 = as_signed(a);
+                            // Perform the multiplication in a signed way.
+                            let full_result: isize = (b_signed as isize) * (a_signed as isize);
+                            // Then reinterpret the result as unsigned.
 
-                                // Overflow register will contain the upper 16 bits.
-                                let overflow: u16 = ((full_result >> 16) & 0xFFFF) as u16;
-                                // We store the lower 16 bits of the result in b.
-                                *b = (full_result & 0xFFFF) as u16;
-                                // And the overflow in register_EX.
-                                self.register_ex = overflow;
-                            }
+                            // Overflow register will contain the upper 16 bits.
+                            let overflow: u16 = ((full_result >> 16) & 0xFFFF) as u16;
+                            // We store the lower 16 bits of the result in b.
+                            *b = (full_result & 0xFFFF) as u16;
+                            // And the overflow in register_EX.
+                            self.register_ex = overflow;
                         }
                         BasicOp::DIV => {
                             // Division by zero causes EX and B to be set to zero.
@@ -257,14 +261,10 @@ impl CPU {
                         }
                         BasicOp::DVI => {
                             // Like DIV, but treat b and a as signed.
-                            let a_signed: i16;
-                            let b_signed: i16;
-                            unsafe {
-                                a_signed = std::mem::transmute(a);
-                                b_signed = std::mem::transmute(*b);
-                            }
-                            let full_result = (a_signed as i32) * (b_signed as i32);
-                            let full_result: u32 = unsafe { std::mem::transmute(full_result) };
+                            let a_signed: i16 = as_signed(a);
+                            let b_signed: i16 = as_signed(*b);
+
+                            let full_result: isize = (a_signed as isize) * (b_signed as isize);
                             *b = (full_result & 0xFFFF) as u16;
                             self.register_ex = ((full_result >> 16) & 0xFFFF) as u16;
                         }
@@ -279,13 +279,14 @@ impl CPU {
                             if a == 0 {
                                 return;
                             }
-                            let b_signed: i16 = unsafe { std::mem::transmute(*b) };
-                            let a_signed: i16 = unsafe { std::mem::transmute(a) };
+                            let b_signed: i16 = as_signed(*b);
+                            let a_signed: i16 = as_signed(a);
+                            let result: u16 = as_unsigned(b_signed % a_signed);
 
                             // TODO: Check that the modulo behaves as described in spec: MDI -7, 16 = -7
                             // If not, we'll need to perform the modulo unsigned, then re-apply the signedness
                             // of a/abs(a) * b/abs(b) * result
-                            *b = unsafe { std::mem::transmute((b_signed % a_signed) as u16) };
+                            *b = result;
                         }
                         BasicOp::AND => {
                             *b &= a;
@@ -302,15 +303,79 @@ impl CPU {
                             // DCPU-16 spec denotes it in Java's notation: >>> for logical shift (perform
                             // shift as if unsigned. >> for arithmetic shift (preserve signedness).
 
+                            // Get a copy of b. We use this to calculate EX's value later.
+                            let b_copy: u16 = *b;
+
                             // Perform b <<< a
                             *b <<= a;
 
                             // Now we set EX to ((b << 16) >>> a & 0xFFFF).
                             // Transmute to isize so Rust will perform an arithmetic shift.
-                            let ex = arithmetic_shift(*b, -16) >> a;
-                            self.register_ex = ex as u16;
+                            self.register_ex =
+                                arithmetic_shift(arithmetic_shift(b_copy, -16), a as i8) & 0xFFFF;
                         }
-                        BasicOp::ASR => {}
+                        BasicOp::ASR => {
+                            let b_copy = *b;
+                            *b = arithmetic_shift(*b, a as i8);
+                            self.register_ex = arithmetic_shift(b_copy, -16) >> a;
+                        }
+                        BasicOp::SHL => {
+                            let b_copy = *b;
+                            *b <<= a;
+                            self.register_ex =
+                                arithmetic_shift(arithmetic_shift(b_copy, -(a as i8)), 16) & 0xFFFF;
+                        }
+                        BasicOp::IFB => {
+                            // Performs next instruction iff b & a != 0.
+                            if !((a & *b) != 0) {
+                                // In other words, we skip an instruction if it is equal to zero.
+                                self.increment_pc_and_mut();
+                            }
+                        }
+                        BasicOp::IFC => {
+                            // Performs next instruction iff (b&a) == 0
+                            if !((a & *b) == 0) {
+                                // In other words, we skip the next instruction if it's not equal to zero.
+                                self.increment_pc_and_mut();
+                            }
+                        }
+                        BasicOp::IFE => {
+                            // Perform next instruction only if b == a.
+                            if !(*b == a) {
+                                // In other words... Yeah, I think you get the gist.
+                                self.increment_pc_and_mut();
+                            }
+                        }
+                        BasicOp::IFN => {
+                            if !(*b == a) {
+                                self.increment_pc_and_mut();
+                            }
+                        }
+                        BasicOp::IFG => {
+                            if !(*b > a) {
+                                self.increment_pc_and_mut();
+                            }
+                        }
+                        BasicOp::IFA => {
+                            if !as_signed(*b) > as_signed(a) {
+                                self.increment_pc_and_mut();
+                            }
+                        }
+                        BasicOp::IFL => {
+                            if !(*b < a) {
+                                self.increment_pc_and_mut();
+                            }
+                        }
+                        BasicOp::IFU => {
+                            if !(as_signed(*b) < as_signed(a)) {
+                                self.increment_pc_and_mut();
+                            }
+                        }
+                        BasicOp::ADX => {
+                            let b_large = *b as isize;
+                            let value = a + self.register_ex;
+                            *b = value;
+                        }
                         _ => {
                             panic!("Unimplemented instruction! {:?}", instruction);
                         }
