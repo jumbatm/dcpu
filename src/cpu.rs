@@ -306,7 +306,7 @@ impl CPU {
                     // Then reinterpret the result as unsigned.
 
                     // Overflow register will contain the upper 16 bits.
-                    let overflow: u16 = ((full_result >> 16) & 0xFFFF) as u16;
+                    let overflow: u16 = ((full_result.wrapping_shr(16)) & 0xFFFF) as u16;
                     // We store the lower 16 bits of the result in b.
                     *b = (full_result & 0xFFFF) as u16;
                     // And the overflow in register_EX.
@@ -319,10 +319,12 @@ impl CPU {
                         self.excess = 0;
                         return;
                     }
+                    // We fill EX up with the fractional part.
+                    let tmp = ((*b as usize).wrapping_shl(16));
+                    self.excess = ((tmp / (a as usize)) & 0xFFFF) as u16;
+
                     // Otherwise, we perform unsigned division.
                     *b /= a;
-                    // We fill EX up with the fractional part.
-                    self.excess = ((((*b as u32) << 16) / (a as u32)) & 0xFFFF) as u16;
                 }
                 BasicOp::DVI => {
                     // Like DIV, but treat b and a as signed.
@@ -528,7 +530,7 @@ mod tests {
             let mut cpu = CPU::new();
 
             macro_rules! test_set_basic_on_register {
-                ($op:ident, $b:ident, $a:literal) => {
+                ($op:ident, $b:ident, $a:expr) => {
                     cpu.execute(Instruction::Basic(BasicInstruction {
                         op: BasicOp::$op,
                         b: Operand::Register(Register::$b),
@@ -538,7 +540,7 @@ mod tests {
             }
 
             macro_rules! on_all_registers {
-                ($op: ident, $a: literal) => {
+                ($op: ident, $a: expr) => {
                     test_set_basic_on_register!($op, A, $a);
                     test_set_basic_on_register!($op, B, $a);
                     test_set_basic_on_register!($op, C, $a);
@@ -550,23 +552,20 @@ mod tests {
                 };
             }
 
-            test_set_basic_on_register!(SET, A, 1);
-            test_set_basic_on_register!(SET, B, 2);
-            test_set_basic_on_register!(SET, C, 3);
-            test_set_basic_on_register!(SET, X, 4);
-            test_set_basic_on_register!(SET, Y, 5);
-            test_set_basic_on_register!(SET, Z, 6);
-            test_set_basic_on_register!(SET, I, 7);
-            test_set_basic_on_register!(SET, J, 8);
+            macro_rules! reset_registers {
+                () => {
+                    test_set_basic_on_register!(SET, A, 1);
+                    test_set_basic_on_register!(SET, B, 2);
+                    test_set_basic_on_register!(SET, C, 3);
+                    test_set_basic_on_register!(SET, X, 4);
+                    test_set_basic_on_register!(SET, Y, 5);
+                    test_set_basic_on_register!(SET, Z, 6);
+                    test_set_basic_on_register!(SET, I, 7);
+                    test_set_basic_on_register!(SET, J, 8);
+                };
+            };
 
-            assert_eq!(cpu.registers.a, 1);
-            assert_eq!(cpu.registers.b, 2);
-            assert_eq!(cpu.registers.c, 3);
-            assert_eq!(cpu.registers.x, 4);
-            assert_eq!(cpu.registers.y, 5);
-            assert_eq!(cpu.registers.z, 6);
-            assert_eq!(cpu.registers.i, 7);
-            assert_eq!(cpu.registers.j, 8);
+            reset_registers!();
 
             on_all_registers!(ADD, 20);
 
@@ -616,7 +615,120 @@ mod tests {
                 std::mem::transmute::<i16, u16>(-1)
             });
 
-            // Test overflow.
+            // Test MUL.
+            reset_registers!();
+            on_all_registers!(MUL, 10);
+            assert_eq!(cpu.registers.a, 10);
+            assert_eq!(cpu.registers.b, 20);
+            assert_eq!(cpu.registers.c, 30);
+            assert_eq!(cpu.registers.x, 40);
+            assert_eq!(cpu.registers.y, 50);
+            assert_eq!(cpu.registers.z, 60);
+            assert_eq!(cpu.registers.i, 70);
+            assert_eq!(cpu.registers.j, 80);
+            on_all_registers!(MUL, 127);
+
+            assert_eq!(cpu.registers.a, ((10 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.b, ((20 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.c, ((30 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.x, ((40 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.y, ((50 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.z, ((60 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.i, ((70 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.j, ((80 * 127) as usize & 0xFFFF) as u16);
+
+            // Last multiplication to be performed is with register J, so we'll only end up testing with
+            // Register J's excess value.
+            assert_eq!(
+                cpu.excess,
+                (((80 * 127) as usize).wrapping_shr(16) & 0xFFFF) as u16
+            );
+            on_all_registers!(MUL, 127);
+
+            assert_eq!(cpu.registers.a, ((10 * 127 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.b, ((20 * 127 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.c, ((30 * 127 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.x, ((40 * 127 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.y, ((50 * 127 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.z, ((60 * 127 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.i, ((70 * 127 * 127) as usize & 0xFFFF) as u16);
+            assert_eq!(cpu.registers.j, ((80 * 127 * 127) as usize & 0xFFFF) as u16);
+
+            // Last multiplication to be performed is with register J, so we'll only end up testing with
+            // Register J's excess value.
+            assert_eq!(
+                cpu.excess,
+                (((80 * 127 * 127) as usize).wrapping_shr(16) & 0xFFFF) as u16
+            );
+
+            // Test MLI.
+            reset_registers!();
+            on_all_registers!(MLI, -20);
+            assert_eq!(cpu.registers.a, unsafe {
+                std::mem::transmute::<i16, u16>(-20)
+            });
+            assert_eq!(cpu.registers.b, unsafe {
+                std::mem::transmute::<i16, u16>(-40)
+            });
+            assert_eq!(cpu.registers.c, unsafe {
+                std::mem::transmute::<i16, u16>(-60)
+            });
+            assert_eq!(cpu.registers.x, unsafe {
+                std::mem::transmute::<i16, u16>(-80)
+            });
+            assert_eq!(cpu.registers.y, unsafe {
+                std::mem::transmute::<i16, u16>(-100)
+            });
+            assert_eq!(cpu.registers.z, unsafe {
+                std::mem::transmute::<i16, u16>(-120)
+            });
+            assert_eq!(cpu.registers.i, unsafe {
+                std::mem::transmute::<i16, u16>(-140)
+            });
+            assert_eq!(cpu.registers.j, unsafe {
+                std::mem::transmute::<i16, u16>(-160)
+            });
+            // Because this is two's complement, we expect these upper bits to be all 1 (which is the unsigned
+            // equivalent of reading as 0).
+            assert_eq!(cpu.excess, 0xFFFF);
+
+            // Test DIV.
+            reset_registers!();
+
+            on_all_registers!(MUL, 5);
+            on_all_registers!(DIV, 8);
+            assert_eq!(cpu.registers.a, 5 / 8);
+            assert_eq!(cpu.registers.b, 10 / 8);
+            assert_eq!(cpu.registers.c, 15 / 8);
+            assert_eq!(cpu.registers.x, 20 / 8);
+            assert_eq!(cpu.registers.y, 25 / 8);
+            assert_eq!(cpu.registers.z, 30 / 8);
+            assert_eq!(cpu.registers.i, 35 / 8);
+            assert_eq!(cpu.registers.j, 40 / 8);
+
+            // Now test DIV's excess behaviour. We need to handcraft some values for this.
+            cpu.registers.a = 1;
+            test_set_basic_on_register!(DIV, A, 16);
+            assert_eq!(cpu.registers.a, 0);
+            // 1/16 is the same as doing 1 >> 4. The excess part acts as the fractional part of a fixed-point
+            // number. Therefore, we expect the shift to go into this fractional part, starting from the
+            // right.
+            assert_eq!(cpu.excess, 1 << (16 - 4));
+
+            // Try values that should evaluate to 1/2, or 1 >> 1
+            cpu.registers.b = 4;
+            test_set_basic_on_register!(DIV, B, 8);
+            assert_eq!(cpu.registers.b, 0);
+            assert_eq!(cpu.excess, 1 << (16 - 1));
+
+            // Try division by zero.
+            cpu.registers.c = 255;
+            test_set_basic_on_register!(DIV, C, 0);
+            // Should also set B to 0.
+            assert_eq!(cpu.registers.c, 0);
+            assert_eq!(cpu.excess, 0);
+
+            // DVI instruction.
         }
     }
 }
