@@ -125,43 +125,6 @@ impl CPU {
         use instruction::BasicOp;
         use instruction::Operand;
 
-        fn resolve_operand_b<'a>(cpu: &'a mut CPU, b: &Operand) -> Option<&'a mut u16> {
-            Some(match b {
-                Operand::Literal(_) => {
-                    // Attempting to write to a literal value is a no-op.
-                    return None;
-                }
-                Operand::NextWordAsLiteral => {
-                    cpu.increment_pc_and_mut().unwrap();
-                    // Writing to a literal value fails silently here as well.
-                    return None;
-                }
-                Operand::InRegisterAsAddress(register) => {
-                    let v = *cpu.get_reference_to_register(register);
-                    cpu.ram.mut_word(v).unwrap()
-                }
-                Operand::NextWordAsAddress => {
-                    let v = *cpu.increment_pc_and_mut().unwrap();
-                    cpu.ram.mut_word(v).unwrap()
-                }
-                Operand::Register(reg) => cpu.get_reference_to_register(reg),
-                Operand::InRegisterAsAddressPlusNextWord(reg) => {
-                    let r = *cpu.get_reference_to_register(reg);
-                    let v = *cpu.increment_pc_and_mut().unwrap();
-                    cpu.ram.mut_word(v + r).unwrap()
-                }
-                Operand::PushOrPop => {
-                    // Operand b. Therefore, this is a PUSH operation.
-                    cpu.stack_pointer -= 1;
-                    cpu.ram.mut_word(cpu.stack_pointer).unwrap()
-                }
-                Operand::Peek => cpu.ram.mut_word(cpu.stack_pointer).unwrap(),
-                Operand::Pick => {
-                    let v = *cpu.increment_pc_and_mut().unwrap();
-                    cpu.ram.mut_word(cpu.stack_pointer + v).unwrap()
-                }
-            })
-        };
         fn resolve_operand_a(cpu: &mut CPU, a: &Operand) -> u16 {
             let a: u16 = match *a {
                 Operand::Literal(v) => v as u16,
@@ -227,175 +190,204 @@ impl CPU {
         if let Some(instruction) = instruction {
             let instruction: Instruction = instruction.unwrap();
 
-            if let Instruction::Basic(ref instruction) = instruction {
+            if let Instruction::Basic(instruction) = &instruction {
                 let a = resolve_operand_a(self, &instruction.a);
-                if let Some(b) = resolve_operand_b(self, &instruction.b) {
-                    match instruction.op {
-                        BasicOp::SET => {
-                            *b = a;
-                        }
-                        BasicOp::ADD => {
-                            *b += a;
-                        }
-                        BasicOp::SUB => {
-                            *b -= a;
-                        }
-                        BasicOp::MUL => {
-                            let full_result: u32 = (*b as u32) * (a as u32);
-                            // Overflow register will contain the upper 16 bits.
-                            let overflow: u16 = ((full_result >> 16) & 0xFFFF) as u16;
-                            // We store the lower 16 bits of the result in b.
-                            *b = (full_result & 0xFFFFu32) as u16;
-                            self.excess = overflow;
-                        }
-                        BasicOp::MLI => {
-                            let b_signed: i16 = as_signed(*b);
-                            let a_signed: i16 = as_signed(a);
-                            // Perform the multiplication in a signed way.
-                            let full_result: isize = (b_signed as isize) * (a_signed as isize);
-                            // Then reinterpret the result as unsigned.
+                let b = match &instruction.b {
+                    Operand::Literal(_) => {
+                        // Attempting to write to a literal value is a no-op.
+                        return;
+                    }
+                    Operand::NextWordAsLiteral => {
+                        self.increment_pc_and_mut().unwrap();
+                        // Writing to a literal value fails silently here as well.
+                        return;
+                    }
+                    Operand::InRegisterAsAddress(register) => {
+                        let v = *self.get_reference_to_register(register);
+                        self.ram.mut_word(v).unwrap()
+                    }
+                    Operand::NextWordAsAddress => {
+                        let v = *self.increment_pc_and_mut().unwrap();
+                        self.ram.mut_word(v).unwrap()
+                    }
+                    Operand::Register(reg) => self.general_registers.get_register(reg).unwrap(),
+                    Operand::InRegisterAsAddressPlusNextWord(reg) => {
+                        let r = *self.get_reference_to_register(reg);
+                        let v = *self.increment_pc_and_mut().unwrap();
+                        self.ram.mut_word(v + r).unwrap()
+                    }
+                    Operand::PushOrPop => {
+                        // Operand b. Therefore, this is a PUSH operation.
+                        self.stack_pointer -= 1;
+                        self.ram.mut_word(self.stack_pointer).unwrap()
+                    }
+                    Operand::Peek => self.ram.mut_word(self.stack_pointer).unwrap(),
+                    Operand::Pick => {
+                        let v = *self.increment_pc_and_mut().unwrap();
+                        self.ram.mut_word(self.stack_pointer + v).unwrap()
+                    }
+                };
 
-                            // Overflow register will contain the upper 16 bits.
-                            let overflow: u16 = ((full_result >> 16) & 0xFFFF) as u16;
-                            // We store the lower 16 bits of the result in b.
-                            *b = (full_result & 0xFFFF) as u16;
-                            // And the overflow in register_EX.
-                            self.excess = overflow;
-                        }
-                        BasicOp::DIV => {
-                            // Division by zero causes EX and B to be set to zero.
-                            if a == 0 {
-                                *b = 0;
-                                self.excess = 0;
-                                return;
-                            }
-                            // Otherwise, we perform unsigned division.
-                            *b /= a;
-                            // We fill EX up with the fractional part.
-                            self.excess = ((((*b as u32) << 16) / (a as u32)) & 0xFFFF) as u16;
-                        }
-                        BasicOp::DVI => {
-                            // Like DIV, but treat b and a as signed.
-                            let a_signed: i16 = as_signed(a);
-                            let b_signed: i16 = as_signed(*b);
+                match instruction.op {
+                    BasicOp::SET => {
+                        *b = a;
+                    }
+                    BasicOp::ADD => {
+                        *b += a;
+                    }
+                    BasicOp::SUB => {
+                        *b -= a;
+                    }
+                    BasicOp::MUL => {
+                        let full_result: u32 = (*b as u32) * (a as u32);
+                        // Overflow register will contain the upper 16 bits.
+                        let overflow: u16 = ((full_result >> 16) & 0xFFFF) as u16;
+                        // We store the lower 16 bits of the result in b.
+                        *b = (full_result & 0xFFFFu32) as u16;
+                        self.excess = overflow;
+                    }
+                    BasicOp::MLI => {
+                        let b_signed: i16 = as_signed(*b);
+                        let a_signed: i16 = as_signed(a);
+                        // Perform the multiplication in a signed way.
+                        let full_result: isize = (b_signed as isize) * (a_signed as isize);
+                        // Then reinterpret the result as unsigned.
 
-                            let full_result: isize = (a_signed as isize) * (b_signed as isize);
-                            *b = (full_result & 0xFFFF) as u16;
-                            self.excess = ((full_result >> 16) & 0xFFFF) as u16;
+                        // Overflow register will contain the upper 16 bits.
+                        let overflow: u16 = ((full_result >> 16) & 0xFFFF) as u16;
+                        // We store the lower 16 bits of the result in b.
+                        *b = (full_result & 0xFFFF) as u16;
+                        // And the overflow in register_EX.
+                        self.excess = overflow;
+                    }
+                    BasicOp::DIV => {
+                        // Division by zero causes EX and B to be set to zero.
+                        if a == 0 {
+                            *b = 0;
+                            self.excess = 0;
+                            return;
                         }
-                        BasicOp::MOD => {
-                            if a == 0 {
-                                *b = 0;
-                                return;
-                            }
-                            *b = *b % a;
-                        }
-                        BasicOp::MDI => {
-                            if a == 0 {
-                                return;
-                            }
-                            let b_signed: i16 = as_signed(*b);
-                            let a_signed: i16 = as_signed(a);
-                            let result: u16 = as_unsigned(b_signed % a_signed);
+                        // Otherwise, we perform unsigned division.
+                        *b /= a;
+                        // We fill EX up with the fractional part.
+                        self.excess = ((((*b as u32) << 16) / (a as u32)) & 0xFFFF) as u16;
+                    }
+                    BasicOp::DVI => {
+                        // Like DIV, but treat b and a as signed.
+                        let a_signed: i16 = as_signed(a);
+                        let b_signed: i16 = as_signed(*b);
 
-                            // TODO: Check that the modulo behaves as described in spec: MDI -7, 16 = -7
-                            // If not, we'll need to perform the modulo unsigned, then re-apply the signedness
-                            // of a/abs(a) * b/abs(b) * result
-                            *b = result;
+                        let full_result: isize = (a_signed as isize) * (b_signed as isize);
+                        *b = (full_result & 0xFFFF) as u16;
+                        self.excess = ((full_result >> 16) & 0xFFFF) as u16;
+                    }
+                    BasicOp::MOD => {
+                        if a == 0 {
+                            *b = 0;
+                            return;
                         }
-                        BasicOp::AND => {
-                            *b &= a;
+                        *b = *b % a;
+                    }
+                    BasicOp::MDI => {
+                        if a == 0 {
+                            return;
                         }
-                        BasicOp::BOR => {
-                            *b |= a;
-                        }
-                        BasicOp::XOR => {
-                            *b ^= a;
-                        }
-                        BasicOp::SHR => {
-                            // Perform right shift on a. Rust will perform logical shifts on unsigned types, and
-                            // arithmetic shifts on signed types.
-                            // DCPU-16 spec denotes it in Java's notation: >>> for logical shift (perform
-                            // shift as if unsigned. >> for arithmetic shift (preserve signedness).
+                        let b_signed: i16 = as_signed(*b);
+                        let a_signed: i16 = as_signed(a);
+                        let result: u16 = as_unsigned(b_signed % a_signed);
 
-                            // Get a copy of b. We use this to calculate EX's value later.
-                            let b_copy: u16 = *b;
+                        // TODO: Check that the modulo behaves as described in spec: MDI -7, 16 = -7
+                        // If not, we'll need to perform the modulo unsigned, then re-apply the signedness
+                        // of a/abs(a) * b/abs(b) * result
+                        *b = result;
+                    }
+                    BasicOp::AND => {
+                        *b &= a;
+                    }
+                    BasicOp::BOR => {
+                        *b |= a;
+                    }
+                    BasicOp::XOR => {
+                        *b ^= a;
+                    }
+                    BasicOp::SHR => {
+                        // Perform right shift on a. Rust will perform logical shifts on unsigned types, and
+                        // arithmetic shifts on signed types.
+                        // DCPU-16 spec denotes it in Java's notation: >>> for logical shift (perform
+                        // shift as if unsigned. >> for arithmetic shift (preserve signedness).
 
-                            // Perform b <<< a
-                            *b <<= a;
+                        // Get a copy of b. We use this to calculate EX's value later.
+                        // Now we set EX to ((b << 16) >>> a & 0xFFFF).
+                        // Transmute to isize so Rust will perform an arithmetic shift.
+                        self.excess = arithmetic_shift(arithmetic_shift(*b, -16), a as i8) & 0xFFFF;
 
-                            // Now we set EX to ((b << 16) >>> a & 0xFFFF).
-                            // Transmute to isize so Rust will perform an arithmetic shift.
-                            self.excess =
-                                arithmetic_shift(arithmetic_shift(b_copy, -16), a as i8) & 0xFFFF;
+                        // Perform b <<< a
+                        *b <<= a;
+                    }
+                    BasicOp::ASR => {
+                        self.excess = arithmetic_shift(*b, -16) >> a;
+                        *b = arithmetic_shift(*b, a as i8);
+                    }
+                    BasicOp::SHL => {
+                        self.excess =
+                            arithmetic_shift(arithmetic_shift(*b, -(a as i8)), 16) & 0xFFFF;
+                        *b <<= a;
+                    }
+                    BasicOp::IFB => {
+                        // Performs next instruction iff b & a != 0.
+                        if !((a & *b) != 0) {
+                            // In other words, we skip an instruction if it is equal to zero.
+                            self.increment_pc_and_mut();
                         }
-                        BasicOp::ASR => {
-                            let b_copy = *b;
-                            *b = arithmetic_shift(*b, a as i8);
-                            self.excess = arithmetic_shift(b_copy, -16) >> a;
+                    }
+                    BasicOp::IFC => {
+                        // Performs next instruction iff (b&a) == 0
+                        if !((a & *b) == 0) {
+                            // In other words, we skip the next instruction if it's not equal to zero.
+                            self.increment_pc_and_mut();
                         }
-                        BasicOp::SHL => {
-                            let b_copy = *b;
-                            *b <<= a;
-                            self.excess =
-                                arithmetic_shift(arithmetic_shift(b_copy, -(a as i8)), 16) & 0xFFFF;
+                    }
+                    BasicOp::IFE => {
+                        // Perform next instruction only if b == a.
+                        if !(*b == a) {
+                            // In other words... Yeah, I think you get the gist.
+                            self.increment_pc_and_mut();
                         }
-                        BasicOp::IFB => {
-                            // Performs next instruction iff b & a != 0.
-                            if !((a & *b) != 0) {
-                                // In other words, we skip an instruction if it is equal to zero.
-                                self.increment_pc_and_mut();
-                            }
+                    }
+                    BasicOp::IFN => {
+                        if !(*b == a) {
+                            self.increment_pc_and_mut();
                         }
-                        BasicOp::IFC => {
-                            // Performs next instruction iff (b&a) == 0
-                            if !((a & *b) == 0) {
-                                // In other words, we skip the next instruction if it's not equal to zero.
-                                self.increment_pc_and_mut();
-                            }
+                    }
+                    BasicOp::IFG => {
+                        if !(*b > a) {
+                            self.increment_pc_and_mut();
                         }
-                        BasicOp::IFE => {
-                            // Perform next instruction only if b == a.
-                            if !(*b == a) {
-                                // In other words... Yeah, I think you get the gist.
-                                self.increment_pc_and_mut();
-                            }
+                    }
+                    BasicOp::IFA => {
+                        if !as_signed(*b) > as_signed(a) {
+                            self.increment_pc_and_mut();
                         }
-                        BasicOp::IFN => {
-                            if !(*b == a) {
-                                self.increment_pc_and_mut();
-                            }
+                    }
+                    BasicOp::IFL => {
+                        if !(*b < a) {
+                            self.increment_pc_and_mut();
                         }
-                        BasicOp::IFG => {
-                            if !(*b > a) {
-                                self.increment_pc_and_mut();
-                            }
+                    }
+                    BasicOp::IFU => {
+                        if !(as_signed(*b) < as_signed(a)) {
+                            self.increment_pc_and_mut();
                         }
-                        BasicOp::IFA => {
-                            if !as_signed(*b) > as_signed(a) {
-                                self.increment_pc_and_mut();
-                            }
-                        }
-                        BasicOp::IFL => {
-                            if !(*b < a) {
-                                self.increment_pc_and_mut();
-                            }
-                        }
-                        BasicOp::IFU => {
-                            if !(as_signed(*b) < as_signed(a)) {
-                                self.increment_pc_and_mut();
-                            }
-                        }
-                        BasicOp::ADX => {
-                            let b_large = *b as isize;
-                            let value = a + self.excess;
-                            *b = value;
-                        }
-                        _ => {
-                            panic!("Unimplemented instruction! {:?}", instruction);
-                        }
-                    };
-                }
+                    }
+                    BasicOp::ADX => {
+                        let b_large = *b as isize;
+                        let value = a + self.excess;
+                        *b = value;
+                    }
+                    _ => {
+                        panic!("Unimplemented instruction! {:?}", instruction);
+                    }
+                };
             } else if let Instruction::Special(instruction) = instruction {
                 // Do something
             } else {
