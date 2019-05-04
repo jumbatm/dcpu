@@ -72,8 +72,6 @@ pub enum Register {
     EX,
 }
 
-pub enum OtherValue {}
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum Operand {
     NextWordAsAddress,

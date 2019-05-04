@@ -466,7 +466,7 @@ impl CPU {
                 }
                 // SpecialOp::INT => {}
                 SpecialOp::IAG => {
-                    if let ResolvedOperand::Literal(a) = a {
+                    if let ResolvedOperand::Literal(_) = a {
                         return;
                     } else if let ResolvedOperand::Reference(a) = a {
                         *a = interrupt_address_copy;
@@ -520,7 +520,6 @@ impl CPU {
 
 #[cfg(test)]
 mod tests {
-    use super::instruction::tests::make_instruction;
     #[test]
     fn test_add_instruction() {}
 }

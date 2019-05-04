@@ -40,11 +40,9 @@ impl Ram {
             Err(Error::AccessViolation(address))
         }
     }
-
-    /// Execute one cycle.
-    pub fn tick(&mut self) {}
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

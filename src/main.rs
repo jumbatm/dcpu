@@ -1,4 +1,5 @@
 mod cpu;
 fn main() {
-    let _cpu = cpu::CPU::new();
+    let mut cpu = cpu::CPU::new();
+    cpu.tick();
 }
