@@ -122,6 +122,8 @@ impl CPU {
         }
     }
 
+    pub fn execute(&mut self, instruction: Instruction) {}
+
     /// Fetch and execute an instruction, or pretend to be still be busy with an instruction, in which case
     /// nothing will be done for this tick.
     pub fn tick(&mut self) {
@@ -208,8 +210,49 @@ impl CPU {
 
         // Fetch and decode an instruction.
         let instruction = self.fetch_instruction();
+
+        // We pre-emptively grab a copy of what's in the interrupt address here, to avoid double mut borrow later.
+        let interrupt_address_copy = self.interrupt_address;
+
         if let Some(instruction) = instruction {
             let instruction: Instruction = instruction.unwrap();
+            let a: ResolvedOperand = match instruction.get_a() {
+                Operand::Literal(v) => ResolvedOperand::Literal(*v as u16),
+                reference => {
+                    ResolvedOperand::Reference(match reference {
+                        Operand::NextWordAsLiteral => {
+                            let v = *self.increment_pc_and_mut().unwrap();
+                            self.ram.mut_word(v).unwrap()
+                        }
+                        Operand::InRegisterAsAddress(ref register) => {
+                            let v = *self.get_reference_to_register(register);
+                            self.ram.mut_word(v).unwrap()
+                        }
+                        Operand::NextWordAsAddress => {
+                            let v = *self.increment_pc_and_mut().unwrap();
+                            self.ram.mut_word(v).unwrap()
+                        }
+                        Operand::Register(reg) => self.get_reference_to_register(reg),
+                        Operand::InRegisterAsAddressPlusNextWord(ref reg) => {
+                            let r = *self.get_reference_to_register(reg);
+                            let v = *self.increment_pc_and_mut().unwrap();
+                            self.ram.mut_word(v + r).unwrap()
+                        }
+                        Operand::PushOrPop => {
+                            // Operand a. Therefore, this is a POP operation.
+                            let result = self.ram.mut_word(self.stack_pointer).unwrap();
+                            self.stack_pointer += 1;
+                            result
+                        }
+                        Operand::Peek => self.ram.mut_word(self.stack_pointer).unwrap(),
+                        Operand::Pick => {
+                            let v = *self.increment_pc_and_mut().unwrap();
+                            self.ram.mut_word(self.stack_pointer + v).unwrap()
+                        }
+                        _ => unreachable!(),
+                    })
+                }
+            };
 
             if let Instruction::Basic(instruction) = &instruction {
                 let a = match resolve_operand_a(self, &instruction.a) {
@@ -440,19 +483,28 @@ impl CPU {
                     }
                     // SpecialOp::INT => {}
                     SpecialOp::IAG => {
-                        let a = match resolve_operand_a(self, &instruction.a) {
-                            ResolvedOperand::Literal(_) => return,
-                            ResolvedOperand::Reference(v) => *v = self.interrupt_address,
-                        };
+                        if let ResolvedOperand::Literal(a) = a {
+                            return;
+                        } else if let ResolvedOperand::Reference(a) = a {
+                            *a = interrupt_address_copy;
+                        }
                     }
                     SpecialOp::IAS => {
                         let a = resolve_operand_a(self, &instruction.a).as_literal();
                         self.interrupt_address = a;
                     }
-                    SpecialOp::IAQ => {}
-                    SpecialOp::HWN => {}
-                    SpecialOp::HWQ => {}
-                    SpecialOp::HWI => {}
+                    SpecialOp::IAQ => {
+                        // If a is nonzero, add interrupts to queue instead of executing them right away.
+                    }
+                    SpecialOp::HWN => {
+                        // Set a to the number of hardware devices.
+                    }
+                    SpecialOp::HWQ => {
+                        // Set A, B, C, X, Y registers to information about hardware at a.
+                    }
+                    SpecialOp::HWI => {
+                        // Send hardware interrupt to a.
+                    }
                     SpecialOp::RFI => {}
                     _ => panic!("Unimplemented SpecialOp: {:?}", instruction.op),
                 }
@@ -468,6 +520,9 @@ impl CPU {
 
 #[cfg(test)]
 mod tests {
+    use super::instruction::tests::make_instruction;
     #[test]
-    fn test_add_instruction() {}
+    fn test_add_instruction() {
+        make_instruction();
+    }
 }

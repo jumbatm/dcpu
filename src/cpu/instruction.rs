@@ -48,6 +48,15 @@ pub enum Instruction {
     Special(SpecialInstruction),
 }
 
+impl Instruction {
+    pub fn get_a(&self) -> &Operand {
+        match self {
+            Instruction::Basic(basic) => &basic.a,
+            Instruction::Special(special) => &special.a,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Register {
     A,
@@ -62,6 +71,8 @@ pub enum Register {
     PC,
     EX,
 }
+
+pub enum OtherValue {}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Operand {
@@ -224,7 +235,7 @@ impl std::convert::TryFrom<u16> for Instruction {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use std::convert::TryFrom;
 
@@ -236,7 +247,7 @@ mod tests {
     /// Convenience function for creating the bytes representing a certain instruction. Note that the argument
     /// order is that of the mnemonic, so ADD (which is 0x02) B ( which is 0x01), 12 (which is 0x32) should be
     /// called as `make_instruction(0x02, 0x01, 0x32)`
-    fn make_instruction(o: u8, b: u8, a: u8) -> u16 {
+    pub fn make_instruction(o: u8, b: u8, a: u8) -> u16 {
         let a: u16 = a as u16 & ((1 << 6) - 1);
         let b: u16 = b as u16 & ((1 << 5) - 1);
         let o: u16 = o as u16 & ((1 << 5) - 1);
