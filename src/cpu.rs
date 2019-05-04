@@ -285,10 +285,10 @@ impl CPU {
                     *b = a;
                 }
                 BasicOp::ADD => {
-                    *b += a;
+                    *b = ((*b as usize).wrapping_add(a as usize)) as u16;
                 }
                 BasicOp::SUB => {
-                    *b -= a;
+                    *b = ((*b as usize).wrapping_sub(a as usize)) as u16;
                 }
                 BasicOp::MUL => {
                     let full_result: u32 = (*b as u32) * (a as u32);
@@ -520,6 +520,103 @@ impl CPU {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::cpu::instruction::*;
     #[test]
-    fn test_add_instruction() {}
+    fn test_set_instruction() {
+        {
+            let mut cpu = CPU::new();
+
+            macro_rules! test_set_basic_on_register {
+                ($op:ident, $b:ident, $a:literal) => {
+                    cpu.execute(Instruction::Basic(BasicInstruction {
+                        op: BasicOp::$op,
+                        b: Operand::Register(Register::$b),
+                        a: Operand::Literal($a),
+                    }));
+                };
+            }
+
+            macro_rules! on_all_registers {
+                ($op: ident, $a: literal) => {
+                    test_set_basic_on_register!($op, A, $a);
+                    test_set_basic_on_register!($op, B, $a);
+                    test_set_basic_on_register!($op, C, $a);
+                    test_set_basic_on_register!($op, X, $a);
+                    test_set_basic_on_register!($op, Y, $a);
+                    test_set_basic_on_register!($op, Z, $a);
+                    test_set_basic_on_register!($op, I, $a);
+                    test_set_basic_on_register!($op, J, $a);
+                };
+            }
+
+            test_set_basic_on_register!(SET, A, 1);
+            test_set_basic_on_register!(SET, B, 2);
+            test_set_basic_on_register!(SET, C, 3);
+            test_set_basic_on_register!(SET, X, 4);
+            test_set_basic_on_register!(SET, Y, 5);
+            test_set_basic_on_register!(SET, Z, 6);
+            test_set_basic_on_register!(SET, I, 7);
+            test_set_basic_on_register!(SET, J, 8);
+
+            assert_eq!(cpu.registers.a, 1);
+            assert_eq!(cpu.registers.b, 2);
+            assert_eq!(cpu.registers.c, 3);
+            assert_eq!(cpu.registers.x, 4);
+            assert_eq!(cpu.registers.y, 5);
+            assert_eq!(cpu.registers.z, 6);
+            assert_eq!(cpu.registers.i, 7);
+            assert_eq!(cpu.registers.j, 8);
+
+            on_all_registers!(ADD, 20);
+
+            assert_eq!(cpu.registers.a, 21);
+            assert_eq!(cpu.registers.b, 22);
+            assert_eq!(cpu.registers.c, 23);
+            assert_eq!(cpu.registers.x, 24);
+            assert_eq!(cpu.registers.y, 25);
+            assert_eq!(cpu.registers.z, 26);
+            assert_eq!(cpu.registers.i, 27);
+            assert_eq!(cpu.registers.j, 28);
+
+            on_all_registers!(SUB, 7);
+            assert_eq!(cpu.registers.a, 14);
+            assert_eq!(cpu.registers.b, 15);
+            assert_eq!(cpu.registers.c, 16);
+            assert_eq!(cpu.registers.x, 17);
+            assert_eq!(cpu.registers.y, 18);
+            assert_eq!(cpu.registers.z, 19);
+            assert_eq!(cpu.registers.i, 20);
+            assert_eq!(cpu.registers.j, 21);
+
+            // Test underflow.
+            on_all_registers!(SUB, 22);
+            assert_eq!(cpu.registers.a, unsafe {
+                std::mem::transmute::<i16, u16>(-8)
+            });
+            assert_eq!(cpu.registers.b, unsafe {
+                std::mem::transmute::<i16, u16>(-7)
+            });
+            assert_eq!(cpu.registers.c, unsafe {
+                std::mem::transmute::<i16, u16>(-6)
+            });
+            assert_eq!(cpu.registers.x, unsafe {
+                std::mem::transmute::<i16, u16>(-5)
+            });
+            assert_eq!(cpu.registers.y, unsafe {
+                std::mem::transmute::<i16, u16>(-4)
+            });
+            assert_eq!(cpu.registers.z, unsafe {
+                std::mem::transmute::<i16, u16>(-3)
+            });
+            assert_eq!(cpu.registers.i, unsafe {
+                std::mem::transmute::<i16, u16>(-2)
+            });
+            assert_eq!(cpu.registers.j, unsafe {
+                std::mem::transmute::<i16, u16>(-1)
+            });
+
+            // Test overflow.
+        }
+    }
 }

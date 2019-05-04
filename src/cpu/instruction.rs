@@ -172,7 +172,7 @@ impl std::convert::From<u8> for Operand {
             0x1d => Operand::Register(Register::EX),
             0x1e => Operand::NextWordAsAddress,
             0x1f => Operand::NextWordAsLiteral,
-            val @ 0x20...0x3f => Operand::Literal((val as i8) - 33),
+            val @ 0x20...0x3f => Operand::Literal((val as isize - 33) as i8),
             _ => unreachable!(),
         }
     }
@@ -293,7 +293,7 @@ pub mod tests {
             BasicInstruction {
                 op: BasicOp::SUB,
                 b: Operand::Register(Register::C),
-                a: Operand::Literal(-1),
+                a: Operand::Literal(unsafe { std::mem::transmute(-1i8) }),
             }
         );
 
