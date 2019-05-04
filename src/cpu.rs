@@ -10,12 +10,12 @@ pub struct CPU {
     program_counter: u16,
     stack_pointer: u16,
     wait_ticks: u8,
-    general_registers: GeneralRegisters,
+    registers: Registers,
     excess: u16,
     interrupt_address: u16,
 }
 
-struct GeneralRegisters {
+struct Registers {
     a: u16,
     b: u16,
     c: u16,
@@ -26,9 +26,9 @@ struct GeneralRegisters {
     j: u16,
 }
 
-impl GeneralRegisters {
-    fn new() -> GeneralRegisters {
-        GeneralRegisters {
+impl Registers {
+    fn new() -> Registers {
+        Registers {
             a: 0,
             b: 0,
             c: 0,
@@ -75,7 +75,7 @@ impl CPU {
             program_counter: 0,
             stack_pointer: 0xFFFF,
             wait_ticks: 0,
-            general_registers: GeneralRegisters::new(),
+            registers: Registers::new(),
             interrupt_address: 0,
             excess: 0,
         }
@@ -102,7 +102,7 @@ impl CPU {
     }
 
     fn get_reference_to_register(&mut self, register: &instruction::Register) -> &mut u16 {
-        if let Some(reg) = self.general_registers.get_register(&register) {
+        if let Some(reg) = self.registers.get_register(&register) {
             reg
         } else {
             match register {
@@ -210,7 +210,7 @@ impl CPU {
                         let v = *self.increment_pc_and_mut().unwrap();
                         self.ram.mut_word(v).unwrap()
                     }
-                    Operand::Register(reg) => self.general_registers.get_register(reg).unwrap(),
+                    Operand::Register(reg) => self.registers.get_register(reg).unwrap(),
                     Operand::InRegisterAsAddressPlusNextWord(reg) => {
                         let r = *self.get_reference_to_register(reg);
                         let v = *self.increment_pc_and_mut().unwrap();
@@ -380,12 +380,29 @@ impl CPU {
                         }
                     }
                     BasicOp::ADX => {
-                        let b_large = *b as isize;
-                        let value = a + self.excess;
-                        *b = value;
+                        let b_large = *b as usize + a as usize + self.excess as usize;
+                        *b = (b_large & 0xFFFF) as u16;
+                        // Check for overflow.
+                        self.excess = if b_large > std::u16::MAX as usize {
+                            1
+                        } else {
+                            0
+                        };
                     }
-                    _ => {
-                        panic!("Unimplemented instruction! {:?}", instruction);
+                    BasicOp::SBX => {
+                        let b_small = *b as isize - a as isize + self.excess as isize;
+                        *b = (unsafe { std::mem::transmute::<isize, usize>(b_small) } & 0xFFFF)
+                            as u16;
+                        // Check for underflow.
+                        self.excess = if b_small < 0 { 0xFFFF } else { 0 };
+                    }
+                    BasicOp::STI => {
+                        *b = a;
+                        self.registers.i += 1;
+                    }
+                    BasicOp::STD => {
+                        *b = a;
+                        self.registers.j -= 1;
                     }
                 };
             } else if let Instruction::Special(instruction) = instruction {
