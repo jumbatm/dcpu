@@ -56,6 +56,14 @@ impl Registers {
     }
 }
 
+impl From<Ram> for CPU {
+    fn from(ram: Ram) -> CPU {
+        let mut result = CPU::new();
+        result.ram = ram;
+        result
+    }
+}
+
 #[derive(Debug)]
 enum Error {
     RamError(ram::Error),
@@ -122,43 +130,56 @@ impl CPU {
             self.wait_ticks -= 1;
             return;
         }
-        use instruction::BasicOp;
-        use instruction::Operand;
+        use instruction::{BasicOp, Operand, SpecialOp};
 
-        fn resolve_operand_a(cpu: &mut CPU, a: &Operand) -> u16 {
-            let a: u16 = match *a {
-                Operand::Literal(v) => v as u16,
+        enum ResolvedOperand<'a> {
+            Literal(u16),
+            Reference(&'a mut u16),
+        };
+
+        impl<'a> ResolvedOperand<'a> {
+            fn as_literal(&self) -> u16 {
+                match &self {
+                    ResolvedOperand::Literal(v) => *v,
+                    ResolvedOperand::Reference(v) => **v,
+                }
+            }
+        }
+
+        fn resolve_operand_a<'a>(cpu: &'a mut CPU, a: &Operand) -> ResolvedOperand<'a> {
+            let a: &mut u16 = match *a {
+                Operand::Literal(v) => return ResolvedOperand::Literal(v as u16),
                 Operand::NextWordAsLiteral => {
                     let v = *cpu.increment_pc_and_mut().unwrap();
-                    *cpu.ram.mut_word(v).unwrap()
+                    cpu.ram.mut_word(v).unwrap()
                 }
                 Operand::InRegisterAsAddress(ref register) => {
                     let v = *cpu.get_reference_to_register(register);
-                    *cpu.ram.mut_word(v).unwrap()
+                    cpu.ram.mut_word(v).unwrap()
                 }
                 Operand::NextWordAsAddress => {
                     let v = *cpu.increment_pc_and_mut().unwrap();
-                    *cpu.ram.mut_word(v).unwrap()
+                    cpu.ram.mut_word(v).unwrap()
                 }
-                Operand::Register(ref reg) => *cpu.get_reference_to_register(reg),
+                Operand::Register(ref reg) => cpu.get_reference_to_register(reg),
                 Operand::InRegisterAsAddressPlusNextWord(ref reg) => {
                     let r = *cpu.get_reference_to_register(reg);
                     let v = *cpu.increment_pc_and_mut().unwrap();
-                    *cpu.ram.mut_word(v + r).unwrap()
+                    cpu.ram.mut_word(v + r).unwrap()
                 }
                 Operand::PushOrPop => {
                     // Operand a. Therefore, this is a POP operation.
-                    let result = *cpu.ram.mut_word(cpu.stack_pointer).unwrap();
+                    let result = cpu.ram.mut_word(cpu.stack_pointer).unwrap();
                     cpu.stack_pointer += 1;
                     result
                 }
-                Operand::Peek => *cpu.ram.mut_word(cpu.stack_pointer).unwrap(),
+                Operand::Peek => cpu.ram.mut_word(cpu.stack_pointer).unwrap(),
                 Operand::Pick => {
                     let v = *cpu.increment_pc_and_mut().unwrap();
-                    *cpu.ram.mut_word(cpu.stack_pointer + v).unwrap()
+                    cpu.ram.mut_word(cpu.stack_pointer + v).unwrap()
                 }
             };
-            a
+            ResolvedOperand::Reference(a)
         };
 
         fn arithmetic_shift(x: u16, num_bits: i8) -> u16 {
@@ -191,7 +212,10 @@ impl CPU {
             let instruction: Instruction = instruction.unwrap();
 
             if let Instruction::Basic(instruction) = &instruction {
-                let a = resolve_operand_a(self, &instruction.a);
+                let a = match resolve_operand_a(self, &instruction.a) {
+                    ResolvedOperand::Literal(v) => v,
+                    ResolvedOperand::Reference(v) => *v,
+                };
                 let b = match &instruction.b {
                     Operand::Literal(_) => {
                         // Attempting to write to a literal value is a no-op.
@@ -406,7 +430,32 @@ impl CPU {
                     }
                 };
             } else if let Instruction::Special(instruction) = instruction {
-                // Do something
+                match instruction.op {
+                    SpecialOp::JSR => {
+                        let a = resolve_operand_a(self, &instruction.a).as_literal();
+                        // Push address of next instruction to stack, then set PC to a.
+                        self.stack_pointer -= 1;
+                        *self.ram.mut_word(self.stack_pointer).unwrap() = self.program_counter + 1;
+                        self.program_counter = a;
+                    }
+                    // SpecialOp::INT => {}
+                    SpecialOp::IAG => {
+                        let a = match resolve_operand_a(self, &instruction.a) {
+                            ResolvedOperand::Literal(_) => return,
+                            ResolvedOperand::Reference(v) => *v = self.interrupt_address,
+                        };
+                    }
+                    SpecialOp::IAS => {
+                        let a = resolve_operand_a(self, &instruction.a).as_literal();
+                        self.interrupt_address = a;
+                    }
+                    SpecialOp::IAQ => {}
+                    SpecialOp::HWN => {}
+                    SpecialOp::HWQ => {}
+                    SpecialOp::HWI => {}
+                    SpecialOp::RFI => {}
+                    _ => panic!("Unimplemented SpecialOp: {:?}", instruction.op),
+                }
             } else {
                 // Instruction is neither Instruction::Basic nor Instruction::Special.
                 unreachable!();
@@ -415,4 +464,10 @@ impl CPU {
             panic!("End of ram."); // TODO: Replace with appropriate behaviour.
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_add_instruction() {}
 }
