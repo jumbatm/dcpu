@@ -10,18 +10,50 @@ pub struct CPU {
     program_counter: u16,
     stack_pointer: u16,
     wait_ticks: u8,
-    register_a: u16,
-    register_b: u16,
-    register_c: u16,
-    register_x: u16,
-    register_y: u16,
-    register_z: u16,
-    register_i: u16,
-    register_j: u16,
-    register_sp: u16,
-    register_pc: u16,
-    register_ex: u16,
+    general_registers: GeneralRegisters,
+    excess: u16,
     interrupt_address: u16,
+}
+
+struct GeneralRegisters {
+    a: u16,
+    b: u16,
+    c: u16,
+    x: u16,
+    y: u16,
+    z: u16,
+    i: u16,
+    j: u16,
+}
+
+impl GeneralRegisters {
+    fn new() -> GeneralRegisters {
+        GeneralRegisters {
+            a: 0,
+            b: 0,
+            c: 0,
+            x: 0,
+            y: 0,
+            z: 0,
+            i: 0,
+            j: 0,
+        }
+    }
+
+    fn get_register(&mut self, reg: &instruction::Register) -> Option<&mut u16> {
+        use instruction::Register::*;
+        Some(match reg {
+            A => &mut self.a,
+            B => &mut self.b,
+            C => &mut self.c,
+            X => &mut self.x,
+            Y => &mut self.y,
+            Z => &mut self.z,
+            I => &mut self.i,
+            J => &mut self.j,
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -43,18 +75,9 @@ impl CPU {
             program_counter: 0,
             stack_pointer: 0xFFFF,
             wait_ticks: 0,
-            register_a: 0,
-            register_b: 0,
-            register_c: 0,
-            register_x: 0,
-            register_y: 0,
-            register_z: 0,
-            register_i: 0,
-            register_j: 0,
-            register_sp: 0,
-            register_pc: 0,
-            register_ex: 0,
+            general_registers: GeneralRegisters::new(),
             interrupt_address: 0,
+            excess: 0,
         }
     }
     /// Get a reference to the word pointed to by the PC. Then, increment the PC.    
@@ -78,6 +101,19 @@ impl CPU {
         })
     }
 
+    fn get_reference_to_register(&mut self, register: &instruction::Register) -> &mut u16 {
+        if let Some(reg) = self.general_registers.get_register(&register) {
+            reg
+        } else {
+            match register {
+                instruction::Register::EX => &mut self.interrupt_address,
+                instruction::Register::SP => &mut self.stack_pointer,
+                instruction::Register::PC => &mut self.program_counter,
+                _ => unreachable!(),
+            }
+        }
+    }
+
     /// Fetch and execute an instruction, or pretend to be still be busy with an instruction, in which case
     /// nothing will be done for this tick.
     pub fn tick(&mut self) {
@@ -88,26 +124,6 @@ impl CPU {
         }
         use instruction::BasicOp;
         use instruction::Operand;
-
-        fn get_reference_to_register<'a>(
-            cpu: &'a mut CPU,
-            reg: &instruction::Register,
-        ) -> &'a mut u16 {
-            use instruction::Register::*;
-            match reg {
-                A => &mut cpu.register_a,
-                B => &mut cpu.register_b,
-                C => &mut cpu.register_c,
-                X => &mut cpu.register_x,
-                Y => &mut cpu.register_y,
-                Z => &mut cpu.register_z,
-                I => &mut cpu.register_i,
-                J => &mut cpu.register_j,
-                SP => &mut cpu.stack_pointer,
-                PC => &mut cpu.program_counter,
-                EX => &mut cpu.register_ex,
-            }
-        };
 
         fn resolve_operand_b<'a>(cpu: &'a mut CPU, b: &Operand) -> Option<&'a mut u16> {
             Some(match b {
@@ -121,16 +137,16 @@ impl CPU {
                     return None;
                 }
                 Operand::InRegisterAsAddress(register) => {
-                    let v = *get_reference_to_register(cpu, register);
+                    let v = *cpu.get_reference_to_register(register);
                     cpu.ram.mut_word(v).unwrap()
                 }
                 Operand::NextWordAsAddress => {
                     let v = *cpu.increment_pc_and_mut().unwrap();
                     cpu.ram.mut_word(v).unwrap()
                 }
-                Operand::Register(reg) => get_reference_to_register(cpu, reg),
+                Operand::Register(reg) => cpu.get_reference_to_register(reg),
                 Operand::InRegisterAsAddressPlusNextWord(reg) => {
-                    let r = *get_reference_to_register(cpu, reg);
+                    let r = *cpu.get_reference_to_register(reg);
                     let v = *cpu.increment_pc_and_mut().unwrap();
                     cpu.ram.mut_word(v + r).unwrap()
                 }
@@ -154,16 +170,16 @@ impl CPU {
                     *cpu.ram.mut_word(v).unwrap()
                 }
                 Operand::InRegisterAsAddress(ref register) => {
-                    let v = *get_reference_to_register(cpu, register);
+                    let v = *cpu.get_reference_to_register(register);
                     *cpu.ram.mut_word(v).unwrap()
                 }
                 Operand::NextWordAsAddress => {
                     let v = *cpu.increment_pc_and_mut().unwrap();
                     *cpu.ram.mut_word(v).unwrap()
                 }
-                Operand::Register(ref reg) => *get_reference_to_register(cpu, reg),
+                Operand::Register(ref reg) => *cpu.get_reference_to_register(reg),
                 Operand::InRegisterAsAddressPlusNextWord(ref reg) => {
-                    let r = *get_reference_to_register(cpu, reg);
+                    let r = *cpu.get_reference_to_register(reg);
                     let v = *cpu.increment_pc_and_mut().unwrap();
                     *cpu.ram.mut_word(v + r).unwrap()
                 }
@@ -215,7 +231,6 @@ impl CPU {
                 let a = resolve_operand_a(self, &instruction.a);
                 if let Some(b) = resolve_operand_b(self, &instruction.b) {
                     match instruction.op {
-                        // At this level, we resolve operands to the corresponding u16 contained with ram.
                         BasicOp::SET => {
                             *b = a;
                         }
@@ -231,7 +246,7 @@ impl CPU {
                             let overflow: u16 = ((full_result >> 16) & 0xFFFF) as u16;
                             // We store the lower 16 bits of the result in b.
                             *b = (full_result & 0xFFFFu32) as u16;
-                            self.register_ex = overflow;
+                            self.excess = overflow;
                         }
                         BasicOp::MLI => {
                             let b_signed: i16 = as_signed(*b);
@@ -245,19 +260,19 @@ impl CPU {
                             // We store the lower 16 bits of the result in b.
                             *b = (full_result & 0xFFFF) as u16;
                             // And the overflow in register_EX.
-                            self.register_ex = overflow;
+                            self.excess = overflow;
                         }
                         BasicOp::DIV => {
                             // Division by zero causes EX and B to be set to zero.
                             if a == 0 {
                                 *b = 0;
-                                self.register_ex = 0;
+                                self.excess = 0;
                                 return;
                             }
                             // Otherwise, we perform unsigned division.
                             *b /= a;
                             // We fill EX up with the fractional part.
-                            self.register_ex = ((((*b as u32) << 16) / (a as u32)) & 0xFFFF) as u16;
+                            self.excess = ((((*b as u32) << 16) / (a as u32)) & 0xFFFF) as u16;
                         }
                         BasicOp::DVI => {
                             // Like DIV, but treat b and a as signed.
@@ -266,7 +281,7 @@ impl CPU {
 
                             let full_result: isize = (a_signed as isize) * (b_signed as isize);
                             *b = (full_result & 0xFFFF) as u16;
-                            self.register_ex = ((full_result >> 16) & 0xFFFF) as u16;
+                            self.excess = ((full_result >> 16) & 0xFFFF) as u16;
                         }
                         BasicOp::MOD => {
                             if a == 0 {
@@ -311,18 +326,18 @@ impl CPU {
 
                             // Now we set EX to ((b << 16) >>> a & 0xFFFF).
                             // Transmute to isize so Rust will perform an arithmetic shift.
-                            self.register_ex =
+                            self.excess =
                                 arithmetic_shift(arithmetic_shift(b_copy, -16), a as i8) & 0xFFFF;
                         }
                         BasicOp::ASR => {
                             let b_copy = *b;
                             *b = arithmetic_shift(*b, a as i8);
-                            self.register_ex = arithmetic_shift(b_copy, -16) >> a;
+                            self.excess = arithmetic_shift(b_copy, -16) >> a;
                         }
                         BasicOp::SHL => {
                             let b_copy = *b;
                             *b <<= a;
-                            self.register_ex =
+                            self.excess =
                                 arithmetic_shift(arithmetic_shift(b_copy, -(a as i8)), 16) & 0xFFFF;
                         }
                         BasicOp::IFB => {
@@ -373,7 +388,7 @@ impl CPU {
                         }
                         BasicOp::ADX => {
                             let b_large = *b as isize;
-                            let value = a + self.register_ex;
+                            let value = a + self.excess;
                             *b = value;
                         }
                         _ => {
