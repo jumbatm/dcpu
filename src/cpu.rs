@@ -320,7 +320,7 @@ impl CPU {
                         return;
                     }
                     // We fill EX up with the fractional part.
-                    let tmp = ((*b as usize).wrapping_shl(16));
+                    let tmp = (*b as usize).wrapping_shl(16);
                     self.excess = ((tmp / (a as usize)) & 0xFFFF) as u16;
 
                     // Otherwise, we perform unsigned division.
@@ -328,10 +328,14 @@ impl CPU {
                 }
                 BasicOp::DVI => {
                     // Like DIV, but treat b and a as signed.
+                    if a == 0 {
+                        *b = 0;
+                        self.excess = 0;
+                        return;
+                    }
                     let a_signed: i16 = as_signed(a);
                     let b_signed: i16 = as_signed(*b);
-
-                    let full_result: isize = (a_signed as isize) * (b_signed as isize);
+                    let full_result: isize = (b_signed as isize) / (a_signed as isize);
                     *b = (full_result & 0xFFFF) as u16;
                     self.excess = ((full_result >> 16) & 0xFFFF) as u16;
                 }
@@ -529,7 +533,7 @@ mod tests {
         {
             let mut cpu = CPU::new();
 
-            macro_rules! test_set_basic_on_register {
+            macro_rules! test_basic_on_register {
                 ($op:ident, $b:ident, $a:expr) => {
                     cpu.execute(Instruction::Basic(BasicInstruction {
                         op: BasicOp::$op,
@@ -541,27 +545,27 @@ mod tests {
 
             macro_rules! on_all_registers {
                 ($op: ident, $a: expr) => {
-                    test_set_basic_on_register!($op, A, $a);
-                    test_set_basic_on_register!($op, B, $a);
-                    test_set_basic_on_register!($op, C, $a);
-                    test_set_basic_on_register!($op, X, $a);
-                    test_set_basic_on_register!($op, Y, $a);
-                    test_set_basic_on_register!($op, Z, $a);
-                    test_set_basic_on_register!($op, I, $a);
-                    test_set_basic_on_register!($op, J, $a);
+                    test_basic_on_register!($op, A, $a);
+                    test_basic_on_register!($op, B, $a);
+                    test_basic_on_register!($op, C, $a);
+                    test_basic_on_register!($op, X, $a);
+                    test_basic_on_register!($op, Y, $a);
+                    test_basic_on_register!($op, Z, $a);
+                    test_basic_on_register!($op, I, $a);
+                    test_basic_on_register!($op, J, $a);
                 };
             }
 
             macro_rules! reset_registers {
                 () => {
-                    test_set_basic_on_register!(SET, A, 1);
-                    test_set_basic_on_register!(SET, B, 2);
-                    test_set_basic_on_register!(SET, C, 3);
-                    test_set_basic_on_register!(SET, X, 4);
-                    test_set_basic_on_register!(SET, Y, 5);
-                    test_set_basic_on_register!(SET, Z, 6);
-                    test_set_basic_on_register!(SET, I, 7);
-                    test_set_basic_on_register!(SET, J, 8);
+                    test_basic_on_register!(SET, A, 1);
+                    test_basic_on_register!(SET, B, 2);
+                    test_basic_on_register!(SET, C, 3);
+                    test_basic_on_register!(SET, X, 4);
+                    test_basic_on_register!(SET, Y, 5);
+                    test_basic_on_register!(SET, Z, 6);
+                    test_basic_on_register!(SET, I, 7);
+                    test_basic_on_register!(SET, J, 8);
                 };
             };
 
@@ -694,7 +698,6 @@ mod tests {
 
             // Test DIV.
             reset_registers!();
-
             on_all_registers!(MUL, 5);
             on_all_registers!(DIV, 8);
             assert_eq!(cpu.registers.a, 5 / 8);
@@ -708,7 +711,7 @@ mod tests {
 
             // Now test DIV's excess behaviour. We need to handcraft some values for this.
             cpu.registers.a = 1;
-            test_set_basic_on_register!(DIV, A, 16);
+            test_basic_on_register!(DIV, A, 16);
             assert_eq!(cpu.registers.a, 0);
             // 1/16 is the same as doing 1 >> 4. The excess part acts as the fractional part of a fixed-point
             // number. Therefore, we expect the shift to go into this fractional part, starting from the
@@ -717,18 +720,46 @@ mod tests {
 
             // Try values that should evaluate to 1/2, or 1 >> 1
             cpu.registers.b = 4;
-            test_set_basic_on_register!(DIV, B, 8);
+            test_basic_on_register!(DIV, B, 8);
             assert_eq!(cpu.registers.b, 0);
             assert_eq!(cpu.excess, 1 << (16 - 1));
 
             // Try division by zero.
             cpu.registers.c = 255;
-            test_set_basic_on_register!(DIV, C, 0);
+            test_basic_on_register!(DIV, C, 0);
             // Should also set B to 0.
             assert_eq!(cpu.registers.c, 0);
             assert_eq!(cpu.excess, 0);
 
             // DVI instruction.
+            reset_registers!();
+            on_all_registers!(MUL, 10);
+            on_all_registers!(DVI, -10);
+            // Net effect should just be negation.
+            assert_eq!(cpu.registers.a, unsafe {
+                std::mem::transmute::<i16, u16>(-1)
+            });
+            assert_eq!(cpu.registers.b, unsafe {
+                std::mem::transmute::<i16, u16>(-2)
+            });
+            assert_eq!(cpu.registers.c, unsafe {
+                std::mem::transmute::<i16, u16>(-3)
+            });
+            assert_eq!(cpu.registers.x, unsafe {
+                std::mem::transmute::<i16, u16>(-4)
+            });
+            assert_eq!(cpu.registers.y, unsafe {
+                std::mem::transmute::<i16, u16>(-5)
+            });
+            assert_eq!(cpu.registers.z, unsafe {
+                std::mem::transmute::<i16, u16>(-6)
+            });
+            assert_eq!(cpu.registers.i, unsafe {
+                std::mem::transmute::<i16, u16>(-7)
+            });
+            assert_eq!(cpu.registers.j, unsafe {
+                std::mem::transmute::<i16, u16>(-8)
+            });
         }
     }
 }
