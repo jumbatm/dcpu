@@ -557,6 +557,20 @@ mod tests {
     }
 
     #[test]
+    fn test_set_instruction_and_reset_registers_macro() {
+        let mut cpu = CPU::new();
+        reset_registers!(cpu);
+        assert_eq!(cpu.registers.a, 1);
+        assert_eq!(cpu.registers.b, 2);
+        assert_eq!(cpu.registers.c, 3);
+        assert_eq!(cpu.registers.x, 4);
+        assert_eq!(cpu.registers.y, 5);
+        assert_eq!(cpu.registers.z, 6);
+        assert_eq!(cpu.registers.i, 7);
+        assert_eq!(cpu.registers.j, 8);
+    }
+
+    #[test]
     fn test_add_sub_instructions() {
         let mut cpu = CPU::new();
 
