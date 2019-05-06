@@ -276,10 +276,10 @@ impl CPU {
                     *b = a;
                 }
                 BasicOp::ADD => {
-                    *b = ((*b as usize).wrapping_add(a as usize)) as u16;
+                    *b = b.wrapping_add(a);
                 }
                 BasicOp::SUB => {
-                    *b = ((*b as usize).wrapping_sub(a as usize)) as u16;
+                    *b = b.wrapping_sub(a);
                 }
                 BasicOp::MUL => {
                     let full_result: u32 = (*b as u32) * (a as u32);
@@ -367,7 +367,6 @@ impl CPU {
 
                     // Get a copy of b. We use this to calculate EX's value later.
                     // Now we set EX to ((b << 16) >>> a & 0xFFFF).
-                    // Transmute to isize so Rust will perform an arithmetic shift.
                     self.excess = arithmetic_shift(arithmetic_shift(*b, -16), a as i8) & 0xFFFF;
 
                     // Perform b <<< a
@@ -438,8 +437,8 @@ impl CPU {
                     };
                 }
                 BasicOp::SBX => {
-                    let b_small = *b as isize - a as isize + self.excess as isize;
-                    *b = (unsafe { std::mem::transmute::<isize, usize>(b_small) } & 0xFFFF) as u16;
+                    let b_small: isize = *b as isize - a as isize + self.excess as isize;
+                    *b = ((b_small as usize) & 0xFFFF) as u16;
                     // Check for underflow.
                     self.excess = if b_small < 0 { 0xFFFF } else { 0 };
                 }

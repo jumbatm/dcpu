@@ -172,7 +172,7 @@ impl std::convert::From<u8> for Operand {
             0x1d => Operand::Register(Register::EX),
             0x1e => Operand::NextWordAsAddress,
             0x1f => Operand::NextWordAsLiteral,
-            val @ 0x20...0x3f => Operand::Literal((val as isize - 33) as i8),
+            val @ 0x20...0x3f => Operand::Literal(((val as i16).wrapping_sub(33)) as i8),
             _ => unreachable!(),
         }
     }
