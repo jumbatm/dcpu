@@ -328,7 +328,8 @@ impl CPU {
                     let b_signed: i16 = *b as i16;
                     let full_result: isize = (b_signed as isize) / (a_signed as isize);
                     *b = (full_result & 0xFFFF) as u16;
-                    self.excess = ((full_result >> 16) & 0xFFFF) as u16;
+                    self.excess =
+                        ((full_result.wrapping_shl(16) / a_signed as isize) & 0xFFFF) as u16;
                 }
                 BasicOp::MOD => {
                     if a == 0 {
@@ -518,190 +519,208 @@ impl CPU {
 mod tests {
     use super::*;
     use crate::cpu::instruction::*;
+
+    macro_rules! exec_basic_on_register {
+        ($cpu:ident, $op:ident, $b:ident, $a:expr) => {
+            $cpu.execute(Instruction::Basic(BasicInstruction {
+                op: BasicOp::$op,
+                b: Operand::Register(Register::$b),
+                a: Operand::Literal($a),
+            }));
+        };
+    }
+
+    macro_rules! on_all_registers {
+        ($cpu:ident, $op: ident, $a: expr) => {
+            exec_basic_on_register!($cpu, $op, A, $a);
+            exec_basic_on_register!($cpu, $op, B, $a);
+            exec_basic_on_register!($cpu, $op, C, $a);
+            exec_basic_on_register!($cpu, $op, X, $a);
+            exec_basic_on_register!($cpu, $op, Y, $a);
+            exec_basic_on_register!($cpu, $op, Z, $a);
+            exec_basic_on_register!($cpu, $op, I, $a);
+            exec_basic_on_register!($cpu, $op, J, $a);
+        };
+    }
+
+    macro_rules! reset_registers {
+        ($cpu:ident) => {
+            exec_basic_on_register!($cpu, SET, A, 1);
+            exec_basic_on_register!($cpu, SET, B, 2);
+            exec_basic_on_register!($cpu, SET, C, 3);
+            exec_basic_on_register!($cpu, SET, X, 4);
+            exec_basic_on_register!($cpu, SET, Y, 5);
+            exec_basic_on_register!($cpu, SET, Z, 6);
+            exec_basic_on_register!($cpu, SET, I, 7);
+            exec_basic_on_register!($cpu, SET, J, 8);
+        };
+    }
+
     #[test]
-    fn test_set_instruction() {
-        {
-            let mut cpu = CPU::new();
+    fn test_add_sub_instructions() {
+        let mut cpu = CPU::new();
 
-            macro_rules! test_basic_on_register {
-                ($op:ident, $b:ident, $a:expr) => {
-                    cpu.execute(Instruction::Basic(BasicInstruction {
-                        op: BasicOp::$op,
-                        b: Operand::Register(Register::$b),
-                        a: Operand::Literal($a),
-                    }));
-                };
-            }
+        reset_registers!(cpu);
 
-            macro_rules! on_all_registers {
-                ($op: ident, $a: expr) => {
-                    test_basic_on_register!($op, A, $a);
-                    test_basic_on_register!($op, B, $a);
-                    test_basic_on_register!($op, C, $a);
-                    test_basic_on_register!($op, X, $a);
-                    test_basic_on_register!($op, Y, $a);
-                    test_basic_on_register!($op, Z, $a);
-                    test_basic_on_register!($op, I, $a);
-                    test_basic_on_register!($op, J, $a);
-                };
-            }
+        on_all_registers!(cpu, ADD, 20);
 
-            macro_rules! reset_registers {
-                () => {
-                    test_basic_on_register!(SET, A, 1);
-                    test_basic_on_register!(SET, B, 2);
-                    test_basic_on_register!(SET, C, 3);
-                    test_basic_on_register!(SET, X, 4);
-                    test_basic_on_register!(SET, Y, 5);
-                    test_basic_on_register!(SET, Z, 6);
-                    test_basic_on_register!(SET, I, 7);
-                    test_basic_on_register!(SET, J, 8);
-                };
-            };
+        assert_eq!(cpu.registers.a, 21);
+        assert_eq!(cpu.registers.b, 22);
+        assert_eq!(cpu.registers.c, 23);
+        assert_eq!(cpu.registers.x, 24);
+        assert_eq!(cpu.registers.y, 25);
+        assert_eq!(cpu.registers.z, 26);
+        assert_eq!(cpu.registers.i, 27);
+        assert_eq!(cpu.registers.j, 28);
 
-            reset_registers!();
+        on_all_registers!(cpu, SUB, 7);
+        assert_eq!(cpu.registers.a, 14);
+        assert_eq!(cpu.registers.b, 15);
+        assert_eq!(cpu.registers.c, 16);
+        assert_eq!(cpu.registers.x, 17);
+        assert_eq!(cpu.registers.y, 18);
+        assert_eq!(cpu.registers.z, 19);
+        assert_eq!(cpu.registers.i, 20);
+        assert_eq!(cpu.registers.j, 21);
 
-            on_all_registers!(ADD, 20);
+        // Test underflow.
+        on_all_registers!(cpu, SUB, 22);
+        assert_eq!(cpu.registers.a, -8i16 as u16);
+        assert_eq!(cpu.registers.b, -7i16 as u16);
+        assert_eq!(cpu.registers.c, -6i16 as u16);
+        assert_eq!(cpu.registers.x, -5i16 as u16);
+        assert_eq!(cpu.registers.y, -4i16 as u16);
+        assert_eq!(cpu.registers.z, -3i16 as u16);
+        assert_eq!(cpu.registers.i, -2i16 as u16);
+        assert_eq!(cpu.registers.j, -1i16 as u16);
+    }
+    #[test]
+    fn test_mul() {
+        let mut cpu = CPU::new();
 
-            assert_eq!(cpu.registers.a, 21);
-            assert_eq!(cpu.registers.b, 22);
-            assert_eq!(cpu.registers.c, 23);
-            assert_eq!(cpu.registers.x, 24);
-            assert_eq!(cpu.registers.y, 25);
-            assert_eq!(cpu.registers.z, 26);
-            assert_eq!(cpu.registers.i, 27);
-            assert_eq!(cpu.registers.j, 28);
+        // Test MUL.
+        reset_registers!(cpu);
+        on_all_registers!(cpu, MUL, 10);
+        assert_eq!(cpu.registers.a, 10);
+        assert_eq!(cpu.registers.b, 20);
+        assert_eq!(cpu.registers.c, 30);
+        assert_eq!(cpu.registers.x, 40);
+        assert_eq!(cpu.registers.y, 50);
+        assert_eq!(cpu.registers.z, 60);
+        assert_eq!(cpu.registers.i, 70);
+        assert_eq!(cpu.registers.j, 80);
+        on_all_registers!(cpu, MUL, 127);
 
-            on_all_registers!(SUB, 7);
-            assert_eq!(cpu.registers.a, 14);
-            assert_eq!(cpu.registers.b, 15);
-            assert_eq!(cpu.registers.c, 16);
-            assert_eq!(cpu.registers.x, 17);
-            assert_eq!(cpu.registers.y, 18);
-            assert_eq!(cpu.registers.z, 19);
-            assert_eq!(cpu.registers.i, 20);
-            assert_eq!(cpu.registers.j, 21);
+        assert_eq!(cpu.registers.a, ((10 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.b, ((20 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.c, ((30 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.x, ((40 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.y, ((50 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.z, ((60 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.i, ((70 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.j, ((80 * 127) as usize & 0xFFFF) as u16);
 
-            // Test underflow.
-            on_all_registers!(SUB, 22);
-            assert_eq!(cpu.registers.a, -8i16 as u16);
-            assert_eq!(cpu.registers.b, -7i16 as u16);
-            assert_eq!(cpu.registers.c, -6i16 as u16);
-            assert_eq!(cpu.registers.x, -5i16 as u16);
-            assert_eq!(cpu.registers.y, -4i16 as u16);
-            assert_eq!(cpu.registers.z, -3i16 as u16);
-            assert_eq!(cpu.registers.i, -2i16 as u16);
-            assert_eq!(cpu.registers.j, -1i16 as u16);
+        // Last multiplication to be performed is with register J, so we'll only end up testing with
+        // Register J's excess value.
+        assert_eq!(
+            cpu.excess,
+            (((80 * 127) as usize).wrapping_shr(16) & 0xFFFF) as u16
+        );
+        on_all_registers!(cpu, MUL, 127);
 
-            // Test MUL.
-            reset_registers!();
-            on_all_registers!(MUL, 10);
-            assert_eq!(cpu.registers.a, 10);
-            assert_eq!(cpu.registers.b, 20);
-            assert_eq!(cpu.registers.c, 30);
-            assert_eq!(cpu.registers.x, 40);
-            assert_eq!(cpu.registers.y, 50);
-            assert_eq!(cpu.registers.z, 60);
-            assert_eq!(cpu.registers.i, 70);
-            assert_eq!(cpu.registers.j, 80);
-            on_all_registers!(MUL, 127);
+        assert_eq!(cpu.registers.a, ((10 * 127 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.b, ((20 * 127 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.c, ((30 * 127 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.x, ((40 * 127 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.y, ((50 * 127 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.z, ((60 * 127 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.i, ((70 * 127 * 127) as usize & 0xFFFF) as u16);
+        assert_eq!(cpu.registers.j, ((80 * 127 * 127) as usize & 0xFFFF) as u16);
 
-            assert_eq!(cpu.registers.a, ((10 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.b, ((20 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.c, ((30 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.x, ((40 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.y, ((50 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.z, ((60 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.i, ((70 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.j, ((80 * 127) as usize & 0xFFFF) as u16);
+        // Last multiplication to be performed is with register J, so we'll only end up testing with
+        // Register J's excess value.
+        assert_eq!(
+            cpu.excess,
+            (((80 * 127 * 127) as usize).wrapping_shr(16) & 0xFFFF) as u16
+        );
+    }
 
-            // Last multiplication to be performed is with register J, so we'll only end up testing with
-            // Register J's excess value.
-            assert_eq!(
-                cpu.excess,
-                (((80 * 127) as usize).wrapping_shr(16) & 0xFFFF) as u16
-            );
-            on_all_registers!(MUL, 127);
+    #[test]
+    fn test_mli() {
+        let mut cpu = CPU::new();
+        // Test MLI.
+        reset_registers!(cpu);
+        on_all_registers!(cpu, MLI, -20);
+        assert_eq!(cpu.registers.a, -20i16 as u16);
+        assert_eq!(cpu.registers.b, -40i16 as u16);
+        assert_eq!(cpu.registers.c, -60i16 as u16);
+        assert_eq!(cpu.registers.x, -80i16 as u16);
+        assert_eq!(cpu.registers.y, -100i16 as u16);
+        assert_eq!(cpu.registers.z, -120i16 as u16);
+        assert_eq!(cpu.registers.i, -140i16 as u16);
+        assert_eq!(cpu.registers.j, -160i16 as u16);
+        // Because this is two's complement, we expect these upper bits to be all 1 (which is the unsigned
+        // equivalent of reading as 0).
+        assert_eq!(cpu.excess, 0xFFFF);
+    }
 
-            assert_eq!(cpu.registers.a, ((10 * 127 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.b, ((20 * 127 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.c, ((30 * 127 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.x, ((40 * 127 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.y, ((50 * 127 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.z, ((60 * 127 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.i, ((70 * 127 * 127) as usize & 0xFFFF) as u16);
-            assert_eq!(cpu.registers.j, ((80 * 127 * 127) as usize & 0xFFFF) as u16);
+    #[test]
+    fn test_div() {
+        let mut cpu = CPU::new();
+        // Test DIV.
+        reset_registers!(cpu);
+        on_all_registers!(cpu, MUL, 5);
+        on_all_registers!(cpu, DIV, 8);
+        assert_eq!(cpu.registers.a, 5 / 8);
+        assert_eq!(cpu.registers.b, 10 / 8);
+        assert_eq!(cpu.registers.c, 15 / 8);
+        assert_eq!(cpu.registers.x, 20 / 8);
+        assert_eq!(cpu.registers.y, 25 / 8);
+        assert_eq!(cpu.registers.z, 30 / 8);
+        assert_eq!(cpu.registers.i, 35 / 8);
+        assert_eq!(cpu.registers.j, 40 / 8);
 
-            // Last multiplication to be performed is with register J, so we'll only end up testing with
-            // Register J's excess value.
-            assert_eq!(
-                cpu.excess,
-                (((80 * 127 * 127) as usize).wrapping_shr(16) & 0xFFFF) as u16
-            );
+        // Now test DIV's excess behaviour. We need to handcraft some values for this.
+        cpu.registers.a = 1;
+        exec_basic_on_register!(cpu, DIV, A, 16);
+        assert_eq!(cpu.registers.a, 0);
+        // 1/16 is the same as doing 1 >> 4. The excess part acts as the fractional part of a fixed-point
+        // number. Therefore, we expect the shift to go into this fractional part, starting from the
+        // right.
+        assert_eq!(cpu.excess, 1 << (16 - 4));
 
-            // Test MLI.
-            reset_registers!();
-            on_all_registers!(MLI, -20);
-            assert_eq!(cpu.registers.a, -20i16 as u16);
-            assert_eq!(cpu.registers.b, -40i16 as u16);
-            assert_eq!(cpu.registers.c, -60i16 as u16);
-            assert_eq!(cpu.registers.x, -80i16 as u16);
-            assert_eq!(cpu.registers.y, -100i16 as u16);
-            assert_eq!(cpu.registers.z, -120i16 as u16);
-            assert_eq!(cpu.registers.i, -140i16 as u16);
-            assert_eq!(cpu.registers.j, -160i16 as u16);
-            // Because this is two's complement, we expect these upper bits to be all 1 (which is the unsigned
-            // equivalent of reading as 0).
-            assert_eq!(cpu.excess, 0xFFFF);
+        // Try values that should evaluate to 1/2, or 1 >> 1
+        cpu.registers.b = 4;
+        exec_basic_on_register!(cpu, DIV, B, 8);
+        assert_eq!(cpu.registers.b, 0);
+        assert_eq!(cpu.excess, 1 << (16 - 1));
 
-            // Test DIV.
-            reset_registers!();
-            on_all_registers!(MUL, 5);
-            on_all_registers!(DIV, 8);
-            assert_eq!(cpu.registers.a, 5 / 8);
-            assert_eq!(cpu.registers.b, 10 / 8);
-            assert_eq!(cpu.registers.c, 15 / 8);
-            assert_eq!(cpu.registers.x, 20 / 8);
-            assert_eq!(cpu.registers.y, 25 / 8);
-            assert_eq!(cpu.registers.z, 30 / 8);
-            assert_eq!(cpu.registers.i, 35 / 8);
-            assert_eq!(cpu.registers.j, 40 / 8);
+        // Try division by zero.
+        cpu.registers.c = 255;
+        exec_basic_on_register!(cpu, DIV, C, 0);
+        // Should also set B to 0.
+        assert_eq!(cpu.registers.c, 0);
+        assert_eq!(cpu.excess, 0);
+    }
+    #[test]
+    fn test_dvi() {
+        let mut cpu = CPU::new();
+        // DVI instruction.
+        reset_registers!(cpu);
+        on_all_registers!(cpu, MUL, 20);
+        on_all_registers!(cpu, DVI, -10);
+        assert_eq!(cpu.registers.a, -2i16 as u16);
+        assert_eq!(cpu.registers.b, -4i16 as u16);
+        assert_eq!(cpu.registers.c, -6i16 as u16);
+        assert_eq!(cpu.registers.x, -8i16 as u16);
+        assert_eq!(cpu.registers.y, -10i16 as u16);
+        assert_eq!(cpu.registers.z, -12i16 as u16);
+        assert_eq!(cpu.registers.i, -14i16 as u16);
+        assert_eq!(cpu.registers.j, -16i16 as u16);
 
-            // Now test DIV's excess behaviour. We need to handcraft some values for this.
-            cpu.registers.a = 1;
-            test_basic_on_register!(DIV, A, 16);
-            assert_eq!(cpu.registers.a, 0);
-            // 1/16 is the same as doing 1 >> 4. The excess part acts as the fractional part of a fixed-point
-            // number. Therefore, we expect the shift to go into this fractional part, starting from the
-            // right.
-            assert_eq!(cpu.excess, 1 << (16 - 4));
-
-            // Try values that should evaluate to 1/2, or 1 >> 1
-            cpu.registers.b = 4;
-            test_basic_on_register!(DIV, B, 8);
-            assert_eq!(cpu.registers.b, 0);
-            assert_eq!(cpu.excess, 1 << (16 - 1));
-
-            // Try division by zero.
-            cpu.registers.c = 255;
-            test_basic_on_register!(DIV, C, 0);
-            // Should also set B to 0.
-            assert_eq!(cpu.registers.c, 0);
-            assert_eq!(cpu.excess, 0);
-
-            // DVI instruction.
-            reset_registers!();
-            on_all_registers!(MUL, 10);
-            on_all_registers!(DVI, -10);
-            // Net effect should just be negation.
-            assert_eq!(cpu.registers.a, -1i16 as u16);
-            assert_eq!(cpu.registers.b, -2i16 as u16);
-            assert_eq!(cpu.registers.c, -3i16 as u16);
-            assert_eq!(cpu.registers.x, -4i16 as u16);
-            assert_eq!(cpu.registers.y, -5i16 as u16);
-            assert_eq!(cpu.registers.z, -6i16 as u16);
-            assert_eq!(cpu.registers.i, -7i16 as u16);
-            assert_eq!(cpu.registers.j, -8i16 as u16);
-        }
+        cpu.registers.b = -1i16 as u16;
+        exec_basic_on_register!(cpu, DVI, B, 2);
+        assert_eq!(cpu.registers.b, 0);
+        assert_eq!(cpu.excess, 1 << (16 - 1));
     }
 }
