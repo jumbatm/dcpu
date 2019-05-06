@@ -178,27 +178,18 @@ impl CPU {
 
         fn arithmetic_shift(x: u16, num_bits: i8) -> u16 {
             let shift_amount: u32 = num_bits as u32;
-            let x_transmuted: isize = unsafe { std::mem::transmute::<u16, i16>(x) } as isize;
             let shift = if num_bits < 0 {
-                isize::wrapping_shl
+                i16::wrapping_shl
             } else if num_bits > 0 {
-                isize::wrapping_shr
+                i16::wrapping_shr
             } else {
                 return x;
             };
 
-            let x_transmuted = shift(x_transmuted, shift_amount);
-            // Transmute back to usize.
-            let x_shifted: usize = unsafe { std::mem::transmute(x_transmuted) };
-            x_shifted as u16
+            let x = shift(x as i16, shift_amount);
+            x as u16
         }
 
-        fn as_signed(x: u16) -> i16 {
-            unsafe { std::mem::transmute(x) }
-        }
-        fn as_unsigned(x: i16) -> u16 {
-            unsafe { std::mem::transmute(x) }
-        }
         // We pre-emptively grab a copy of what's in the interrupt address here, to avoid double mut borrow later.
         let interrupt_address_copy = self.interrupt_address;
         let a: ResolvedOperand = match instruction.get_a() {
@@ -299,8 +290,8 @@ impl CPU {
                     self.excess = overflow;
                 }
                 BasicOp::MLI => {
-                    let b_signed: i16 = as_signed(*b);
-                    let a_signed: i16 = as_signed(a);
+                    let b_signed: i16 = *b as i16;
+                    let a_signed: i16 = a as i16;
                     // Perform the multiplication in a signed way.
                     let full_result: isize = (b_signed as isize) * (a_signed as isize);
                     // Then reinterpret the result as unsigned.
@@ -333,8 +324,8 @@ impl CPU {
                         self.excess = 0;
                         return;
                     }
-                    let a_signed: i16 = as_signed(a);
-                    let b_signed: i16 = as_signed(*b);
+                    let a_signed: i16 = a as i16;
+                    let b_signed: i16 = *b as i16;
                     let full_result: isize = (b_signed as isize) / (a_signed as isize);
                     *b = (full_result & 0xFFFF) as u16;
                     self.excess = ((full_result >> 16) & 0xFFFF) as u16;
@@ -350,9 +341,9 @@ impl CPU {
                     if a == 0 {
                         return;
                     }
-                    let b_signed: i16 = as_signed(*b);
-                    let a_signed: i16 = as_signed(a);
-                    let result: u16 = as_unsigned(b_signed % a_signed);
+                    let b_signed: i16 = *b as i16;
+                    let a_signed: i16 = a as i16;
+                    let result: u16 = (b_signed % a_signed) as u16;
 
                     // TODO: Check that the modulo behaves as described in spec: MDI -7, 16 = -7
                     // If not, we'll need to perform the modulo unsigned, then re-apply the signedness
@@ -422,7 +413,7 @@ impl CPU {
                     }
                 }
                 BasicOp::IFA => {
-                    if !as_signed(*b) > as_signed(a) {
+                    if !((*b as i16) > (a as i16)) {
                         self.increment_pc_and_mut();
                     }
                 }
@@ -432,7 +423,7 @@ impl CPU {
                     }
                 }
                 BasicOp::IFU => {
-                    if !(as_signed(*b) < as_signed(a)) {
+                    if !((*b as i16) < (a as i16)) {
                         self.increment_pc_and_mut();
                     }
                 }
@@ -594,30 +585,14 @@ mod tests {
 
             // Test underflow.
             on_all_registers!(SUB, 22);
-            assert_eq!(cpu.registers.a, unsafe {
-                std::mem::transmute::<i16, u16>(-8)
-            });
-            assert_eq!(cpu.registers.b, unsafe {
-                std::mem::transmute::<i16, u16>(-7)
-            });
-            assert_eq!(cpu.registers.c, unsafe {
-                std::mem::transmute::<i16, u16>(-6)
-            });
-            assert_eq!(cpu.registers.x, unsafe {
-                std::mem::transmute::<i16, u16>(-5)
-            });
-            assert_eq!(cpu.registers.y, unsafe {
-                std::mem::transmute::<i16, u16>(-4)
-            });
-            assert_eq!(cpu.registers.z, unsafe {
-                std::mem::transmute::<i16, u16>(-3)
-            });
-            assert_eq!(cpu.registers.i, unsafe {
-                std::mem::transmute::<i16, u16>(-2)
-            });
-            assert_eq!(cpu.registers.j, unsafe {
-                std::mem::transmute::<i16, u16>(-1)
-            });
+            assert_eq!(cpu.registers.a, -8i16 as u16);
+            assert_eq!(cpu.registers.b, -7i16 as u16);
+            assert_eq!(cpu.registers.c, -6i16 as u16);
+            assert_eq!(cpu.registers.x, -5i16 as u16);
+            assert_eq!(cpu.registers.y, -4i16 as u16);
+            assert_eq!(cpu.registers.z, -3i16 as u16);
+            assert_eq!(cpu.registers.i, -2i16 as u16);
+            assert_eq!(cpu.registers.j, -1i16 as u16);
 
             // Test MUL.
             reset_registers!();
@@ -668,30 +643,14 @@ mod tests {
             // Test MLI.
             reset_registers!();
             on_all_registers!(MLI, -20);
-            assert_eq!(cpu.registers.a, unsafe {
-                std::mem::transmute::<i16, u16>(-20)
-            });
-            assert_eq!(cpu.registers.b, unsafe {
-                std::mem::transmute::<i16, u16>(-40)
-            });
-            assert_eq!(cpu.registers.c, unsafe {
-                std::mem::transmute::<i16, u16>(-60)
-            });
-            assert_eq!(cpu.registers.x, unsafe {
-                std::mem::transmute::<i16, u16>(-80)
-            });
-            assert_eq!(cpu.registers.y, unsafe {
-                std::mem::transmute::<i16, u16>(-100)
-            });
-            assert_eq!(cpu.registers.z, unsafe {
-                std::mem::transmute::<i16, u16>(-120)
-            });
-            assert_eq!(cpu.registers.i, unsafe {
-                std::mem::transmute::<i16, u16>(-140)
-            });
-            assert_eq!(cpu.registers.j, unsafe {
-                std::mem::transmute::<i16, u16>(-160)
-            });
+            assert_eq!(cpu.registers.a, -20i16 as u16);
+            assert_eq!(cpu.registers.b, -40i16 as u16);
+            assert_eq!(cpu.registers.c, -60i16 as u16);
+            assert_eq!(cpu.registers.x, -80i16 as u16);
+            assert_eq!(cpu.registers.y, -100i16 as u16);
+            assert_eq!(cpu.registers.z, -120i16 as u16);
+            assert_eq!(cpu.registers.i, -140i16 as u16);
+            assert_eq!(cpu.registers.j, -160i16 as u16);
             // Because this is two's complement, we expect these upper bits to be all 1 (which is the unsigned
             // equivalent of reading as 0).
             assert_eq!(cpu.excess, 0xFFFF);
@@ -736,30 +695,14 @@ mod tests {
             on_all_registers!(MUL, 10);
             on_all_registers!(DVI, -10);
             // Net effect should just be negation.
-            assert_eq!(cpu.registers.a, unsafe {
-                std::mem::transmute::<i16, u16>(-1)
-            });
-            assert_eq!(cpu.registers.b, unsafe {
-                std::mem::transmute::<i16, u16>(-2)
-            });
-            assert_eq!(cpu.registers.c, unsafe {
-                std::mem::transmute::<i16, u16>(-3)
-            });
-            assert_eq!(cpu.registers.x, unsafe {
-                std::mem::transmute::<i16, u16>(-4)
-            });
-            assert_eq!(cpu.registers.y, unsafe {
-                std::mem::transmute::<i16, u16>(-5)
-            });
-            assert_eq!(cpu.registers.z, unsafe {
-                std::mem::transmute::<i16, u16>(-6)
-            });
-            assert_eq!(cpu.registers.i, unsafe {
-                std::mem::transmute::<i16, u16>(-7)
-            });
-            assert_eq!(cpu.registers.j, unsafe {
-                std::mem::transmute::<i16, u16>(-8)
-            });
+            assert_eq!(cpu.registers.a, -1i16 as u16);
+            assert_eq!(cpu.registers.b, -2i16 as u16);
+            assert_eq!(cpu.registers.c, -3i16 as u16);
+            assert_eq!(cpu.registers.x, -4i16 as u16);
+            assert_eq!(cpu.registers.y, -5i16 as u16);
+            assert_eq!(cpu.registers.z, -6i16 as u16);
+            assert_eq!(cpu.registers.i, -7i16 as u16);
+            assert_eq!(cpu.registers.j, -8i16 as u16);
         }
     }
 }
