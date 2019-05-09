@@ -370,7 +370,7 @@ impl CPU {
                     self.excess = arithmetic_shift(arithmetic_shift(*b, -16), a as i8) & 0xFFFF;
 
                     // Perform b <<< a
-                    *b <<= a;
+                    *b >>= a;
                 }
                 BasicOp::ASR => {
                     self.excess = arithmetic_shift(*b, -16) >> a;
@@ -544,7 +544,7 @@ mod tests {
         };
     }
 
-    macro_rules! reset_registers {
+    macro_rules! set_registers_to_increment {
         ($cpu:ident) => {
             exec_basic_on_register!($cpu, SET, A, 1);
             exec_basic_on_register!($cpu, SET, B, 2);
@@ -558,9 +558,9 @@ mod tests {
     }
 
     #[test]
-    fn test_set_instruction_and_reset_registers_macro() {
+    fn test_set_instruction_and_set_registers_to_increment_macro() {
         let mut cpu = CPU::new();
-        reset_registers!(cpu);
+        set_registers_to_increment!(cpu);
         assert_eq!(cpu.registers.a, 1);
         assert_eq!(cpu.registers.b, 2);
         assert_eq!(cpu.registers.c, 3);
@@ -575,7 +575,7 @@ mod tests {
     fn test_add_sub_instructions() {
         let mut cpu = CPU::new();
 
-        reset_registers!(cpu);
+        set_registers_to_increment!(cpu);
 
         on_all_registers!(cpu, ADD, 20);
 
@@ -614,7 +614,7 @@ mod tests {
         let mut cpu = CPU::new();
 
         // Test MUL.
-        reset_registers!(cpu);
+        set_registers_to_increment!(cpu);
         on_all_registers!(cpu, MUL, 10);
         assert_eq!(cpu.registers.a, 10);
         assert_eq!(cpu.registers.b, 20);
@@ -664,7 +664,7 @@ mod tests {
     fn test_mli() {
         let mut cpu = CPU::new();
         // Test MLI.
-        reset_registers!(cpu);
+        set_registers_to_increment!(cpu);
         on_all_registers!(cpu, MLI, -20);
         assert_eq!(cpu.registers.a, -20i16 as u16);
         assert_eq!(cpu.registers.b, -40i16 as u16);
@@ -683,7 +683,7 @@ mod tests {
     fn test_div() {
         let mut cpu = CPU::new();
         // Test DIV.
-        reset_registers!(cpu);
+        set_registers_to_increment!(cpu);
         on_all_registers!(cpu, MUL, 5);
         on_all_registers!(cpu, DIV, 8);
         assert_eq!(cpu.registers.a, 5 / 8);
@@ -721,7 +721,7 @@ mod tests {
     fn test_dvi() {
         let mut cpu = CPU::new();
         // DVI instruction.
-        reset_registers!(cpu);
+        set_registers_to_increment!(cpu);
         on_all_registers!(cpu, MUL, 20);
         on_all_registers!(cpu, DVI, -10);
         assert_eq!(cpu.registers.a, -2i16 as u16);
@@ -739,4 +739,108 @@ mod tests {
         assert_eq!(cpu.registers.b, 0);
         assert_eq!(cpu.excess, 1 << (16 - 1));
     }
+
+    #[test]
+    fn test_mod() {
+        let mut cpu = CPU::new();
+        set_registers_to_increment!(cpu);
+        on_all_registers!(cpu, MOD, 3);
+        assert_eq!(cpu.registers.a, 1);
+        assert_eq!(cpu.registers.b, 2);
+        assert_eq!(cpu.registers.c, 0);
+        assert_eq!(cpu.registers.x, 1);
+        assert_eq!(cpu.registers.y, 2);
+        assert_eq!(cpu.registers.z, 0);
+        assert_eq!(cpu.registers.i, 1);
+        assert_eq!(cpu.registers.j, 2);
+    }
+
+    #[test]
+    fn test_mdi() {
+        let mut cpu = CPU::new();
+        exec_basic_on_register!(cpu, SET, B, 12);
+        exec_basic_on_register!(cpu, MDI, B, 11);
+        assert_eq!(cpu.registers.b, 1);
+
+        exec_basic_on_register!(cpu, SET, A, -7);
+        exec_basic_on_register!(cpu, MDI, A, 16);
+        assert_eq!(cpu.registers.a, -7i16 as u16);
+    }
+
+    #[test]
+    fn test_and() {
+        let mut cpu = CPU::new();
+        set_registers_to_increment!(cpu);
+        on_all_registers!(cpu, AND, 0b11);
+        assert_eq!(cpu.registers.a, 0b01);
+        assert_eq!(cpu.registers.b, 0b10);
+        assert_eq!(cpu.registers.c, 0b11);
+        assert_eq!(cpu.registers.x, 0b00);
+        assert_eq!(cpu.registers.y, 0b01);
+        assert_eq!(cpu.registers.z, 0b10);
+        assert_eq!(cpu.registers.i, 0b11);
+        assert_eq!(cpu.registers.j, 0b00);
+    }
+
+    #[test]
+    fn test_bor() {
+        let mut cpu = CPU::new();
+        set_registers_to_increment!(cpu);
+        on_all_registers!(cpu, BOR, 0b11);
+        assert_eq!(cpu.registers.a, 0b11);
+        assert_eq!(cpu.registers.b, 0b11);
+        assert_eq!(cpu.registers.c, 0b11);
+        assert_eq!(cpu.registers.x, 0b111);
+        assert_eq!(cpu.registers.y, 0b111);
+        assert_eq!(cpu.registers.z, 0b111);
+        assert_eq!(cpu.registers.i, 0b111);
+        assert_eq!(cpu.registers.j, 0b1011);
+    }
+
+    #[test]
+    fn test_xor() {
+        let mut cpu = CPU::new();
+        set_registers_to_increment!(cpu);
+        on_all_registers!(cpu, XOR, 0b11);
+        assert_eq!(cpu.registers.a & 0b11, 0b10); // 0b01
+        assert_eq!(cpu.registers.b & 0b11, 0b01); // 0b10
+        assert_eq!(cpu.registers.c & 0b11, 0b00); // 0b11
+        assert_eq!(cpu.registers.x & 0b11, 0b11); // 0b100
+        assert_eq!(cpu.registers.y & 0b11, 0b10); // 0b101
+        assert_eq!(cpu.registers.z & 0b11, 0b01); // 0b110
+        assert_eq!(cpu.registers.i & 0b11, 0b00); // 0b111
+        assert_eq!(cpu.registers.j & 0b11, 0b11); // 0b1000
+    }
+
+    #[test]
+    fn test_shr() {
+        let mut cpu = CPU::new();
+        set_registers_to_increment!(cpu);
+        on_all_registers!(cpu, SHR, 1);
+        assert_eq!(cpu.registers.a, 0);
+        assert_eq!(cpu.registers.b, 1);
+        assert_eq!(cpu.registers.c, 1);
+        assert_eq!(cpu.registers.x, 2);
+        assert_eq!(cpu.registers.y, 2);
+        assert_eq!(cpu.registers.z, 3);
+        assert_eq!(cpu.registers.i, 3);
+        assert_eq!(cpu.registers.j, 4);
+
+        // Test that this is a logical shift.
+        cpu.registers.a = -1i16 as u16;
+        exec_basic_on_register!(cpu, SHR, A, 1);
+        assert_ne!(cpu.registers.a, (-1i16 >> 1) as u16);
+        assert_eq!(cpu.registers.a, 0x7FFF);
+        assert_eq!(cpu.excess, 0xFFFF);
+    }
+
+    #[test]
+    fn test_asr() {
+        let mut cpu = CPU::new();
+        cpu.registers.a = -16i16 as u16;
+        exec_basic_on_register!(cpu, ASR, A, 2);
+        assert_eq!(cpu.registers.a, -4i16 as u16);
+        assert_eq!(cpu.excess, 0);
+    }
+
 }
