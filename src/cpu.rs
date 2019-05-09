@@ -326,10 +326,9 @@ impl CPU {
                     }
                     let a_signed: i16 = a as i16;
                     let b_signed: i16 = *b as i16;
-                    let full_result: isize = (b_signed as isize) / (a_signed as isize);
-                    *b = (full_result & 0xFFFF) as u16;
-                    self.excess =
-                        ((full_result.wrapping_shl(16) / a_signed as isize) & 0xFFFF) as u16;
+                    *b = b_signed.wrapping_div(a_signed) as u16;
+                    self.excess = (((b_signed as isize).wrapping_shl(16) / a_signed as isize)
+                        & 0xFFFF) as u16;
                 }
                 BasicOp::MOD => {
                     if a == 0 {
@@ -469,6 +468,7 @@ impl CPU {
                         *a = interrupt_address_copy;
                     }
                 }
+                /*
                 SpecialOp::IAS => {
                     let a = resolve_operand_a(self, &instruction.a).as_literal();
                     self.interrupt_address = a;
@@ -486,6 +486,7 @@ impl CPU {
                     // Send hardware interrupt to a.
                 }
                 SpecialOp::RFI => {}
+                */
                 _ => panic!("Unimplemented SpecialOp: {:?}", instruction.op),
             }
         } else {
@@ -732,6 +733,7 @@ mod tests {
         assert_eq!(cpu.registers.i, -14i16 as u16);
         assert_eq!(cpu.registers.j, -16i16 as u16);
 
+        // Test DVI excess.
         cpu.registers.b = -1i16 as u16;
         exec_basic_on_register!(cpu, DVI, B, 2);
         assert_eq!(cpu.registers.b, 0);
