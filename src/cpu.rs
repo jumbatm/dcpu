@@ -5,6 +5,344 @@ use instruction::Instruction;
 use ram::Ram;
 use std::convert::TryFrom;
 
+impl instruction::visitor::InstructionVisitor for CPU {
+    fn visit_set(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            *b = a;
+        }
+    }
+    fn visit_add(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            *b = b.wrapping_add(a);
+        }
+    }
+    fn visit_sub(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            *b = b.wrapping_sub(a);
+        }
+    }
+    fn visit_mul(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let mut excess_shadow = None;
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            let full_result: u32 = (*b as u32) * (a as u32);
+            // Overflow register will contain the upper 16 bits.
+            let overflow: u16 = ((full_result >> 16) & 0xFFFF) as u16;
+            // We store the lower 16 bits of the result in b.
+            *b = (full_result & 0xFFFFu32) as u16;
+            excess_shadow = Some(overflow);
+        }
+        if let Some(v) = excess_shadow {
+            self.excess = v;
+        }
+    }
+    fn visit_mli(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let mut excess_shadow = None;
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            let b_signed: i16 = *b as i16;
+            let a_signed: i16 = a as i16;
+            // Perform the multiplication in a signed way.
+            let full_result: isize = (b_signed as isize) * (a_signed as isize);
+            // Then reinterpret the result as unsigned.
+
+            // Overflow register will contain the upper 16 bits.
+            let overflow: u16 = ((full_result.wrapping_shr(16)) & 0xFFFF) as u16;
+            // We store the lower 16 bits of the result in b.
+            *b = (full_result & 0xFFFF) as u16;
+            // And the overflow in register_EX.
+            excess_shadow = Some(overflow);
+        }
+        if let Some(v) = excess_shadow {
+            self.excess = v;
+        }
+    }
+    fn visit_div(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let mut excess_shadow = None;
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            // Division by zero causes EX and B to be set to zero.
+            if a == 0 {
+                *b = 0;
+                self.excess = 0;
+                return;
+            }
+            // We fill EX up with the fractional part.
+            let tmp = (*b as usize).wrapping_shl(16);
+            excess_shadow = Some(((tmp / (a as usize)) & 0xFFFF) as u16);
+
+            // Otherwise, we perform unsigned division.
+            *b /= a;
+        }
+        if let Some(v) = excess_shadow {
+            self.excess = v;
+        }
+    }
+    fn visit_dvi(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let mut excess_shadow = None;
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            // Like DIV, but treat b and a as signed.
+            if a == 0 {
+                *b = 0;
+                self.excess = 0;
+                return;
+            }
+            let a_signed: i16 = a as i16;
+            let b_signed: i16 = *b as i16;
+            *b = b_signed.wrapping_div(a_signed) as u16;
+            excess_shadow =
+                Some((((b_signed as isize).wrapping_shl(16) / a_signed as isize) & 0xFFFF) as u16);
+        }
+        if let Some(v) = excess_shadow {
+            self.excess = v;
+        }
+    }
+    fn visit_mod(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            if a == 0 {
+                *b = 0;
+                return;
+            }
+            *b = *b % a;
+        }
+    }
+    fn visit_mdi(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            if a == 0 {
+                return;
+            }
+            let b_signed: i16 = *b as i16;
+            let a_signed: i16 = a as i16;
+            let result: u16 = (b_signed % a_signed) as u16;
+
+            // TODO: Check that the modulo behaves as described in spec: MDI -7, 16 = -7
+            // If not, we'll need to perform the modulo unsigned, then re-apply the signedness
+            // of a/abs(a) * b/abs(b) * result
+            *b = result;
+        }
+    }
+    fn visit_and(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            *b &= a;
+        }
+    }
+    fn visit_bor(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            *b |= a;
+        }
+    }
+    fn visit_xor(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            *b ^= a;
+        }
+    }
+    fn visit_shr(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let mut excess_shadow = None;
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            // Perform right shift on a. Rust will perform logical shifts on unsigned types, and
+            // arithmetic shifts on signed types.
+            // DCPU-16 spec denotes it in Java's notation: >>> for logical shift (perform
+            // shift as if unsigned. >> for arithmetic shift (preserve signedness).
+
+            // Get a copy of b. We use this to calculate EX's value later.
+            // Now we set EX to ((b << 16) >>> a & 0xFFFF).
+            excess_shadow =
+                Some(CPU::arithmetic_shift(CPU::arithmetic_shift(*b, -16), a as i8) & 0xFFFF);
+
+            // Perform b <<< a
+            *b <<= a;
+        }
+        if let Some(v) = excess_shadow {
+            self.excess = v;
+        }
+    }
+    fn visit_asr(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let mut excess_shadow = None;
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            excess_shadow = Some(CPU::arithmetic_shift(*b, -16) >> a);
+            *b = CPU::arithmetic_shift(*b, a as i8);
+        }
+        if let Some(v) = excess_shadow {
+            self.excess = v;
+        }
+    }
+    fn visit_shl(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let mut excess_shadow = None;
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            excess_shadow =
+                Some(CPU::arithmetic_shift(CPU::arithmetic_shift(*b, -(a as i8)), 16) & 0xFFFF);
+            *b <<= a;
+        }
+        if let Some(v) = excess_shadow {
+            self.excess = v;
+        }
+    }
+    fn visit_ifb(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let b = self.resolve_operand(b).as_literal();
+        // Performs next instruction iff b & a != 0.
+        if !((b & a) != 0) {
+            // In other words, we skip an instruction if it is equal to zero.
+            self.increment_pc_and_mut();
+        }
+    }
+    fn visit_ifc(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let b = self.resolve_operand(b).as_literal();
+        // Performs next instruction iff (b&a) == 0
+        if !((b & a) == 0) {
+            // In other words, we skip the next instruction if it's not equal to zero.
+            self.increment_pc_and_mut();
+        }
+    }
+    fn visit_ife(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let b = self.resolve_operand(b).as_literal();
+        // Perform next instruction only if b == a.
+        if !(b == a) {
+            self.increment_pc_and_mut();
+        }
+    }
+    fn visit_ifn(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let b = self.resolve_operand(b).as_literal();
+        if !(b != a) {
+            self.increment_pc_and_mut();
+        }
+    }
+    fn visit_ifg(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let b = self.resolve_operand(b).as_literal();
+        if !(b > a) {
+            self.increment_pc_and_mut();
+        }
+    }
+    fn visit_ifa(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let b = self.resolve_operand(b).as_literal();
+
+        if !((b as i16) > (a as i16)) {
+            self.increment_pc_and_mut();
+        }
+    }
+    fn visit_ifl(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let b = self.resolve_operand(b).as_literal();
+        if !(b < a) {
+            self.increment_pc_and_mut();
+        }
+    }
+    fn visit_ifu(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let b = self.resolve_operand(b).as_literal();
+
+        if !((b as i16) < (a as i16)) {
+            self.increment_pc_and_mut();
+        }
+    }
+    fn visit_adx(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let mut excess_shadow = self.excess;
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            let b_large = *b as usize + a as usize + excess_shadow as usize;
+            *b = (b_large & 0xFFFF) as u16;
+            // Check for overflow.
+            excess_shadow = if b_large > std::u16::MAX as usize {
+                1
+            } else {
+                0
+            };
+        }
+        self.excess = excess_shadow;
+    }
+    fn visit_sbx(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        let mut excess_shadow = self.excess;
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            let b_small: isize = *b as isize - a as isize + excess_shadow as isize;
+            *b = ((b_small as usize) & 0xFFFF) as u16;
+            // Check for underflow.
+            excess_shadow = if b_small < 0 { 0xFFFF } else { 0 };
+        }
+        self.excess = excess_shadow;
+    }
+    fn visit_sti(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            *b = a;
+        }
+        self.registers.i += 1;
+    }
+    fn visit_std(&mut self, b: &instruction::Operand, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
+            *b = a;
+        }
+        self.registers.j -= 1;
+    }
+
+    // Special instructions.
+    fn visit_jsr(&mut self, a: &instruction::Operand) {
+        let a = self.resolve_operand(a).as_literal();
+        // Push address of next instruction to stack, then set PC to a.
+        self.stack_pointer -= 1;
+        *self.ram.mut_word(self.stack_pointer).unwrap() = self.program_counter + 1;
+        self.program_counter = a;
+    }
+    fn visit_int(&mut self, a: &instruction::Operand) {
+        // TODO: triggers a software interrupt with message a
+        unimplemented!();
+    }
+    fn visit_iag(&mut self, a: &instruction::Operand) {
+        let ia = self.interrupt_address;
+        if let ResolvedOperand::Reference(a) = self.resolve_operand(a) {
+            *a = ia;
+        }
+    }
+    fn visit_ias(&mut self, a: &instruction::Operand) {
+        // TODO: Sets IA to a.
+        let a = self.resolve_operand(a).as_literal();
+        self.interrupt_address = a;
+    }
+    fn visit_rfi(&mut self, a: &instruction::Operand) {
+        // Disables interrupt queueing, pops A from the stack, then
+        // pops PC from the stack
+        unimplemented!();
+    }
+    fn visit_iaq(&mut self, a: &instruction::Operand) {
+        // if a is nonzero, interrupts will be added to the queue
+        // instead of triggered. if a is zero, interrupts will be
+        // triggered as normal again
+        unimplemented!();
+    }
+    fn visit_hwn(&mut self, a: &instruction::Operand) {
+        // Sets a to number of connected hardware devices.
+        unimplemented!();
+    }
+    fn visit_hwq(&mut self, a: &instruction::Operand) {
+        // sets A, B, C, X, Y registers to information about hardware a
+        // A+(B<<16) is a 32 bit word identifying the hardware id
+        // C is the hardware version
+        unimplemented!();
+    }
+    fn visit_hwi(&mut self, a: &instruction::Operand) {
+        // sends an interrupt to hardware a
+        unimplemented!();
+    }
+}
+
 pub struct CPU {
     ram: Ram,
     program_counter: u16,
@@ -76,6 +414,20 @@ impl From<ram::Error> for Error {
     }
 }
 
+enum ResolvedOperand<'a> {
+    Literal(u16),
+    Reference(&'a mut u16),
+}
+
+impl<'a> ResolvedOperand<'a> {
+    fn as_literal(&self) -> u16 {
+        match self {
+            ResolvedOperand::Literal(v) => *v,
+            ResolvedOperand::Reference(r) => **r,
+        }
+    }
+}
+
 impl CPU {
     pub fn new() -> CPU {
         CPU {
@@ -121,378 +473,60 @@ impl CPU {
             }
         }
     }
+    fn arithmetic_shift(x: u16, num_bits: i8) -> u16 {
+        let shift_amount: u32 = num_bits as u32;
+        let shift = if num_bits < 0 {
+            i16::wrapping_shl
+        } else if num_bits > 0 {
+            i16::wrapping_shr
+        } else {
+            return x;
+        };
+
+        let x = shift(x as i16, shift_amount);
+        x as u16
+    }
+
+    fn resolve_operand(&mut self, a: &instruction::Operand) -> ResolvedOperand {
+        use instruction::Operand;
+        let a: &mut u16 = match *a {
+            Operand::Literal(v) => return ResolvedOperand::Literal(v as u16),
+            Operand::NextWordAsLiteral => {
+                let v = *self.increment_pc_and_mut().unwrap();
+                self.ram.mut_word(v).unwrap()
+            }
+            Operand::InRegisterAsAddress(ref register) => {
+                let v = *self.get_reference_to_register(register);
+                self.ram.mut_word(v).unwrap()
+            }
+            Operand::NextWordAsAddress => {
+                let v = *self.increment_pc_and_mut().unwrap();
+                self.ram.mut_word(v).unwrap()
+            }
+            Operand::Register(ref reg) => self.get_reference_to_register(reg),
+            Operand::InRegisterAsAddressPlusNextWord(ref reg) => {
+                let r = *self.get_reference_to_register(reg);
+                let v = *self.increment_pc_and_mut().unwrap();
+                self.ram.mut_word(v + r).unwrap()
+            }
+            Operand::PushOrPop => {
+                // Operand a. Therefore, this is a POP operation.
+                let result = self.ram.mut_word(self.stack_pointer).unwrap();
+                self.stack_pointer += 1;
+                result
+            }
+            Operand::Peek => self.ram.mut_word(self.stack_pointer).unwrap(),
+            Operand::Pick => {
+                let v = *self.increment_pc_and_mut().unwrap();
+                self.ram.mut_word(self.stack_pointer + v).unwrap()
+            }
+        };
+        ResolvedOperand::Reference(a)
+    }
 
     /// Execute an instruction. This is where the "brains" of our CPU live.
     pub fn execute(&mut self, instruction: Instruction) {
-        use instruction::{BasicOp, Operand, SpecialOp};
-
-        enum ResolvedOperand<'a> {
-            Literal(u16),
-            Reference(&'a mut u16),
-        };
-
-        impl<'a> ResolvedOperand<'a> {
-            fn as_literal(&self) -> u16 {
-                match &self {
-                    ResolvedOperand::Literal(v) => *v,
-                    ResolvedOperand::Reference(v) => **v,
-                }
-            }
-        }
-
-        fn resolve_operand_a<'a>(cpu: &'a mut CPU, a: &Operand) -> ResolvedOperand<'a> {
-            let a: &mut u16 = match *a {
-                Operand::Literal(v) => return ResolvedOperand::Literal(v as u16),
-                Operand::NextWordAsLiteral => {
-                    let v = *cpu.increment_pc_and_mut().unwrap();
-                    cpu.ram.mut_word(v).unwrap()
-                }
-                Operand::InRegisterAsAddress(ref register) => {
-                    let v = *cpu.get_reference_to_register(register);
-                    cpu.ram.mut_word(v).unwrap()
-                }
-                Operand::NextWordAsAddress => {
-                    let v = *cpu.increment_pc_and_mut().unwrap();
-                    cpu.ram.mut_word(v).unwrap()
-                }
-                Operand::Register(ref reg) => cpu.get_reference_to_register(reg),
-                Operand::InRegisterAsAddressPlusNextWord(ref reg) => {
-                    let r = *cpu.get_reference_to_register(reg);
-                    let v = *cpu.increment_pc_and_mut().unwrap();
-                    cpu.ram.mut_word(v + r).unwrap()
-                }
-                Operand::PushOrPop => {
-                    // Operand a. Therefore, this is a POP operation.
-                    let result = cpu.ram.mut_word(cpu.stack_pointer).unwrap();
-                    cpu.stack_pointer += 1;
-                    result
-                }
-                Operand::Peek => cpu.ram.mut_word(cpu.stack_pointer).unwrap(),
-                Operand::Pick => {
-                    let v = *cpu.increment_pc_and_mut().unwrap();
-                    cpu.ram.mut_word(cpu.stack_pointer + v).unwrap()
-                }
-            };
-            ResolvedOperand::Reference(a)
-        };
-
-        fn arithmetic_shift(x: u16, num_bits: i8) -> u16 {
-            let shift_amount: u32 = num_bits as u32;
-            let shift = if num_bits < 0 {
-                i16::wrapping_shl
-            } else if num_bits > 0 {
-                i16::wrapping_shr
-            } else {
-                return x;
-            };
-
-            let x = shift(x as i16, shift_amount);
-            x as u16
-        }
-
-        // We pre-emptively grab a copy of what's in the interrupt address here, to avoid double mut borrow later.
-        let interrupt_address_copy = self.interrupt_address;
-        let a: ResolvedOperand = match instruction.get_a() {
-            Operand::Literal(v) => ResolvedOperand::Literal(*v as u16),
-            reference => {
-                ResolvedOperand::Reference(match reference {
-                    Operand::NextWordAsLiteral => {
-                        let v = *self.increment_pc_and_mut().unwrap();
-                        self.ram.mut_word(v).unwrap()
-                    }
-                    Operand::InRegisterAsAddress(ref register) => {
-                        let v = *self.get_reference_to_register(register);
-                        self.ram.mut_word(v).unwrap()
-                    }
-                    Operand::NextWordAsAddress => {
-                        let v = *self.increment_pc_and_mut().unwrap();
-                        self.ram.mut_word(v).unwrap()
-                    }
-                    Operand::Register(reg) => self.get_reference_to_register(reg),
-                    Operand::InRegisterAsAddressPlusNextWord(ref reg) => {
-                        let r = *self.get_reference_to_register(reg);
-                        let v = *self.increment_pc_and_mut().unwrap();
-                        self.ram.mut_word(v + r).unwrap()
-                    }
-                    Operand::PushOrPop => {
-                        // Operand a. Therefore, this is a POP operation.
-                        let result = self.ram.mut_word(self.stack_pointer).unwrap();
-                        self.stack_pointer += 1;
-                        result
-                    }
-                    Operand::Peek => self.ram.mut_word(self.stack_pointer).unwrap(),
-                    Operand::Pick => {
-                        let v = *self.increment_pc_and_mut().unwrap();
-                        self.ram.mut_word(self.stack_pointer + v).unwrap()
-                    }
-                    _ => unreachable!(),
-                })
-            }
-        };
-
-        if let Instruction::Basic(instruction) = &instruction {
-            let a = match resolve_operand_a(self, &instruction.a) {
-                ResolvedOperand::Literal(v) => v,
-                ResolvedOperand::Reference(v) => *v,
-            };
-            let b = match &instruction.b {
-                Operand::Literal(_) => {
-                    // Attempting to write to a literal value is a no-op.
-                    return;
-                }
-                Operand::NextWordAsLiteral => {
-                    self.increment_pc_and_mut().unwrap();
-                    // Writing to a literal value fails silently here as well.
-                    return;
-                }
-                Operand::InRegisterAsAddress(register) => {
-                    let v = *self.get_reference_to_register(register);
-                    self.ram.mut_word(v).unwrap()
-                }
-                Operand::NextWordAsAddress => {
-                    let v = *self.increment_pc_and_mut().unwrap();
-                    self.ram.mut_word(v).unwrap()
-                }
-                Operand::Register(reg) => self.registers.get_register(reg).unwrap(),
-                Operand::InRegisterAsAddressPlusNextWord(reg) => {
-                    let r = *self.get_reference_to_register(reg);
-                    let v = *self.increment_pc_and_mut().unwrap();
-                    self.ram.mut_word(v + r).unwrap()
-                }
-                Operand::PushOrPop => {
-                    // Operand b. Therefore, this is a PUSH operation.
-                    self.stack_pointer -= 1;
-                    self.ram.mut_word(self.stack_pointer).unwrap()
-                }
-                Operand::Peek => self.ram.mut_word(self.stack_pointer).unwrap(),
-                Operand::Pick => {
-                    let v = *self.increment_pc_and_mut().unwrap();
-                    self.ram.mut_word(self.stack_pointer + v).unwrap()
-                }
-            };
-
-            match instruction.op {
-                BasicOp::SET => {
-                    *b = a;
-                }
-                BasicOp::ADD => {
-                    *b = b.wrapping_add(a);
-                }
-                BasicOp::SUB => {
-                    *b = b.wrapping_sub(a);
-                }
-                BasicOp::MUL => {
-                    let full_result: u32 = (*b as u32) * (a as u32);
-                    // Overflow register will contain the upper 16 bits.
-                    let overflow: u16 = ((full_result >> 16) & 0xFFFF) as u16;
-                    // We store the lower 16 bits of the result in b.
-                    *b = (full_result & 0xFFFFu32) as u16;
-                    self.excess = overflow;
-                }
-                BasicOp::MLI => {
-                    let b_signed: i16 = *b as i16;
-                    let a_signed: i16 = a as i16;
-                    // Perform the multiplication in a signed way.
-                    let full_result: isize = (b_signed as isize) * (a_signed as isize);
-                    // Then reinterpret the result as unsigned.
-
-                    // Overflow register will contain the upper 16 bits.
-                    let overflow: u16 = ((full_result.wrapping_shr(16)) & 0xFFFF) as u16;
-                    // We store the lower 16 bits of the result in b.
-                    *b = (full_result & 0xFFFF) as u16;
-                    // And the overflow in register_EX.
-                    self.excess = overflow;
-                }
-                BasicOp::DIV => {
-                    // Division by zero causes EX and B to be set to zero.
-                    if a == 0 {
-                        *b = 0;
-                        self.excess = 0;
-                        return;
-                    }
-                    // We fill EX up with the fractional part.
-                    let tmp = (*b as usize).wrapping_shl(16);
-                    self.excess = ((tmp / (a as usize)) & 0xFFFF) as u16;
-
-                    // Otherwise, we perform unsigned division.
-                    *b /= a;
-                }
-                BasicOp::DVI => {
-                    // Like DIV, but treat b and a as signed.
-                    if a == 0 {
-                        *b = 0;
-                        self.excess = 0;
-                        return;
-                    }
-                    let a_signed: i16 = a as i16;
-                    let b_signed: i16 = *b as i16;
-                    *b = b_signed.wrapping_div(a_signed) as u16;
-                    self.excess = (((b_signed as isize).wrapping_shl(16) / a_signed as isize)
-                        & 0xFFFF) as u16;
-                }
-                BasicOp::MOD => {
-                    if a == 0 {
-                        *b = 0;
-                        return;
-                    }
-                    *b = *b % a;
-                }
-                BasicOp::MDI => {
-                    if a == 0 {
-                        return;
-                    }
-                    let b_signed: i16 = *b as i16;
-                    let a_signed: i16 = a as i16;
-                    let result: u16 = (b_signed % a_signed) as u16;
-
-                    // TODO: Check that the modulo behaves as described in spec: MDI -7, 16 = -7
-                    // If not, we'll need to perform the modulo unsigned, then re-apply the signedness
-                    // of a/abs(a) * b/abs(b) * result
-                    *b = result;
-                }
-                BasicOp::AND => {
-                    *b &= a;
-                }
-                BasicOp::BOR => {
-                    *b |= a;
-                }
-                BasicOp::XOR => {
-                    *b ^= a;
-                }
-                BasicOp::SHR => {
-                    // Perform right shift on a. Rust will perform logical shifts on unsigned types, and
-                    // arithmetic shifts on signed types.
-                    // DCPU-16 spec denotes it in Java's notation: >>> for logical shift (perform
-                    // shift as if unsigned. >> for arithmetic shift (preserve signedness).
-
-                    // Get a copy of b. We use this to calculate EX's value later.
-                    // Now we set EX to ((b << 16) >>> a & 0xFFFF).
-                    self.excess = arithmetic_shift(arithmetic_shift(*b, -16), a as i8) & 0xFFFF;
-
-                    // Perform b <<< a
-                    *b >>= a;
-                }
-                BasicOp::ASR => {
-                    self.excess = arithmetic_shift(*b, -16) >> a;
-                    *b = arithmetic_shift(*b, a as i8);
-                }
-                BasicOp::SHL => {
-                    self.excess = arithmetic_shift(arithmetic_shift(*b, -(a as i8)), 16) & 0xFFFF;
-                    *b <<= a;
-                }
-                BasicOp::IFB => {
-                    // Performs next instruction iff b & a != 0.
-                    if !((a & *b) != 0) {
-                        // In other words, we skip an instruction if it is equal to zero.
-                        self.increment_pc_and_mut();
-                    }
-                }
-                BasicOp::IFC => {
-                    // Performs next instruction iff (b&a) == 0
-                    if !((a & *b) == 0) {
-                        // In other words, we skip the next instruction if it's not equal to zero.
-                        self.increment_pc_and_mut();
-                    }
-                }
-                BasicOp::IFE => {
-                    // Perform next instruction only if b == a.
-                    if !(*b == a) {
-                        // In other words... Yeah, I think you get the gist.
-                        self.increment_pc_and_mut();
-                    }
-                }
-                BasicOp::IFN => {
-                    if !(*b == a) {
-                        self.increment_pc_and_mut();
-                    }
-                }
-                BasicOp::IFG => {
-                    if !(*b > a) {
-                        self.increment_pc_and_mut();
-                    }
-                }
-                BasicOp::IFA => {
-                    if !((*b as i16) > (a as i16)) {
-                        self.increment_pc_and_mut();
-                    }
-                }
-                BasicOp::IFL => {
-                    if !(*b < a) {
-                        self.increment_pc_and_mut();
-                    }
-                }
-                BasicOp::IFU => {
-                    if !((*b as i16) < (a as i16)) {
-                        self.increment_pc_and_mut();
-                    }
-                }
-                BasicOp::ADX => {
-                    let b_large = *b as usize + a as usize + self.excess as usize;
-                    *b = (b_large & 0xFFFF) as u16;
-                    // Check for overflow.
-                    self.excess = if b_large > std::u16::MAX as usize {
-                        1
-                    } else {
-                        0
-                    };
-                }
-                BasicOp::SBX => {
-                    let b_small: isize = *b as isize - a as isize + self.excess as isize;
-                    *b = ((b_small as usize) & 0xFFFF) as u16;
-                    // Check for underflow.
-                    self.excess = if b_small < 0 { 0xFFFF } else { 0 };
-                }
-                BasicOp::STI => {
-                    *b = a;
-                    self.registers.i += 1;
-                }
-                BasicOp::STD => {
-                    *b = a;
-                    self.registers.j -= 1;
-                }
-            };
-        } else if let Instruction::Special(instruction) = instruction {
-            match instruction.op {
-                SpecialOp::JSR => {
-                    let a = resolve_operand_a(self, &instruction.a).as_literal();
-                    // Push address of next instruction to stack, then set PC to a.
-                    self.stack_pointer -= 1;
-                    *self.ram.mut_word(self.stack_pointer).unwrap() = self.program_counter + 1;
-                    self.program_counter = a;
-                }
-                // SpecialOp::INT => {}
-                SpecialOp::IAG => {
-                    if let ResolvedOperand::Literal(_) = a {
-                        return;
-                    } else if let ResolvedOperand::Reference(a) = a {
-                        *a = interrupt_address_copy;
-                    }
-                }
-                /*
-                SpecialOp::IAS => {
-                    let a = resolve_operand_a(self, &instruction.a).as_literal();
-                    self.interrupt_address = a;
-                }
-                SpecialOp::IAQ => {
-                    // If a is nonzero, add interrupts to queue instead of executing them right away.
-                }
-                SpecialOp::HWN => {
-                    // Set a to the number of hardware devices.
-                }
-                SpecialOp::HWQ => {
-                    // Set A, B, C, X, Y registers to information about hardware at a.
-                }
-                SpecialOp::HWI => {
-                    // Send hardware interrupt to a.
-                }
-                SpecialOp::RFI => {}
-                */
-                _ => panic!("Unimplemented SpecialOp: {:?}", instruction.op),
-            }
-        } else {
-            // Instruction is neither Instruction::Basic nor Instruction::Special.
-            unreachable!();
-        }
+        instruction::visitor::InstructionVisitor::visit(self, &instruction);
     }
 
     /// Fetch and execute an instruction, or pretend to be still be busy with an instruction, in which case

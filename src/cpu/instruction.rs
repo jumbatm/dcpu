@@ -56,6 +56,152 @@ impl Instruction {
         }
     }
 }
+pub mod visitor {
+    use super::*;
+
+    pub trait InstructionVisitor {
+        // Basic instructions.
+        fn visit_set(&mut self, b: &Operand, a: &Operand);
+        fn visit_add(&mut self, b: &Operand, a: &Operand);
+        fn visit_sub(&mut self, b: &Operand, a: &Operand);
+        fn visit_mul(&mut self, b: &Operand, a: &Operand);
+        fn visit_mli(&mut self, b: &Operand, a: &Operand);
+        fn visit_div(&mut self, b: &Operand, a: &Operand);
+        fn visit_dvi(&mut self, b: &Operand, a: &Operand);
+        fn visit_mod(&mut self, b: &Operand, a: &Operand);
+        fn visit_mdi(&mut self, b: &Operand, a: &Operand);
+        fn visit_and(&mut self, b: &Operand, a: &Operand);
+        fn visit_bor(&mut self, b: &Operand, a: &Operand);
+        fn visit_xor(&mut self, b: &Operand, a: &Operand);
+        fn visit_shr(&mut self, b: &Operand, a: &Operand);
+        fn visit_asr(&mut self, b: &Operand, a: &Operand);
+        fn visit_shl(&mut self, b: &Operand, a: &Operand);
+        fn visit_ifb(&mut self, b: &Operand, a: &Operand);
+        fn visit_ifc(&mut self, b: &Operand, a: &Operand);
+        fn visit_ife(&mut self, b: &Operand, a: &Operand);
+        fn visit_ifn(&mut self, b: &Operand, a: &Operand);
+        fn visit_ifg(&mut self, b: &Operand, a: &Operand);
+        fn visit_ifa(&mut self, b: &Operand, a: &Operand);
+        fn visit_ifl(&mut self, b: &Operand, a: &Operand);
+        fn visit_ifu(&mut self, b: &Operand, a: &Operand);
+        fn visit_adx(&mut self, b: &Operand, a: &Operand);
+        fn visit_sbx(&mut self, b: &Operand, a: &Operand);
+        fn visit_sti(&mut self, b: &Operand, a: &Operand);
+        fn visit_std(&mut self, b: &Operand, a: &Operand);
+
+        // Special instructions.
+        fn visit_jsr(&mut self, a: &Operand);
+        fn visit_int(&mut self, a: &Operand);
+        fn visit_iag(&mut self, a: &Operand);
+        fn visit_ias(&mut self, a: &Operand);
+        fn visit_rfi(&mut self, a: &Operand);
+        fn visit_iaq(&mut self, a: &Operand);
+        fn visit_hwn(&mut self, a: &Operand);
+        fn visit_hwq(&mut self, a: &Operand);
+        fn visit_hwi(&mut self, a: &Operand);
+
+        fn visit(&mut self, inst: &Instruction) {
+            match inst {
+                Instruction::Basic(inst) => match inst.op {
+                    BasicOp::SET => {
+                        self.visit_set(&inst.b, &inst.a);
+                    }
+                    BasicOp::ADD => {
+                        self.visit_add(&inst.b, &inst.a);
+                    }
+                    BasicOp::SUB => {
+                        self.visit_sub(&inst.b, &inst.a);
+                    }
+                    BasicOp::MUL => {
+                        self.visit_mul(&inst.b, &inst.a);
+                    }
+                    BasicOp::MLI => {
+                        self.visit_mli(&inst.b, &inst.a);
+                    }
+                    BasicOp::DIV => {
+                        self.visit_div(&inst.b, &inst.a);
+                    }
+                    BasicOp::DVI => {
+                        self.visit_dvi(&inst.b, &inst.a);
+                    }
+                    BasicOp::MOD => {
+                        self.visit_mod(&inst.b, &inst.a);
+                    }
+                    BasicOp::MDI => {
+                        self.visit_mdi(&inst.b, &inst.a);
+                    }
+                    BasicOp::AND => {
+                        self.visit_and(&inst.b, &inst.a);
+                    }
+                    BasicOp::BOR => {
+                        self.visit_bor(&inst.b, &inst.a);
+                    }
+                    BasicOp::XOR => {
+                        self.visit_xor(&inst.b, &inst.a);
+                    }
+                    BasicOp::SHR => {
+                        self.visit_shr(&inst.b, &inst.a);
+                    }
+                    BasicOp::ASR => {
+                        self.visit_asr(&inst.b, &inst.a);
+                    }
+                    BasicOp::SHL => {
+                        self.visit_shl(&inst.b, &inst.a);
+                    }
+                    BasicOp::IFB => {
+                        self.visit_ifb(&inst.b, &inst.a);
+                    }
+                    BasicOp::IFC => {
+                        self.visit_ifc(&inst.b, &inst.a);
+                    }
+                    BasicOp::IFE => {
+                        self.visit_ife(&inst.b, &inst.a);
+                    }
+                    BasicOp::IFN => {
+                        self.visit_ifn(&inst.b, &inst.a);
+                    }
+                    BasicOp::IFG => {
+                        self.visit_ifg(&inst.b, &inst.a);
+                    }
+                    BasicOp::IFA => {
+                        self.visit_ifa(&inst.b, &inst.a);
+                    }
+                    BasicOp::IFL => {
+                        self.visit_ifl(&inst.b, &inst.a);
+                    }
+                    BasicOp::IFU => {
+                        self.visit_ifu(&inst.b, &inst.a);
+                    }
+                    BasicOp::ADX => {
+                        self.visit_adx(&inst.b, &inst.a);
+                    }
+                    BasicOp::SBX => {
+                        self.visit_sbx(&inst.b, &inst.a);
+                    }
+                    BasicOp::STI => {
+                        self.visit_sti(&inst.b, &inst.a);
+                    }
+                    BasicOp::STD => {
+                        self.visit_std(&inst.b, &inst.a);
+                    }
+                },
+                Instruction::Special(inst) => match inst.op {
+                    SpecialOp::JSR => {
+                        self.visit_jsr(&inst.a);
+                    }
+                    SpecialOp::INT => self.visit_int(&inst.a),
+                    SpecialOp::IAG => self.visit_iag(&inst.a),
+                    SpecialOp::IAS => self.visit_ias(&inst.a),
+                    SpecialOp::RFI => self.visit_rfi(&inst.a),
+                    SpecialOp::IAQ => self.visit_iaq(&inst.a),
+                    SpecialOp::HWN => self.visit_hwn(&inst.a),
+                    SpecialOp::HWQ => self.visit_hwq(&inst.a),
+                    SpecialOp::HWI => self.visit_hwi(&inst.a),
+                },
+            }
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Register {
