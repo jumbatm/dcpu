@@ -156,11 +156,10 @@ impl instruction::visitor::InstructionVisitor for CPU {
 
             // Get a copy of b. We use this to calculate EX's value later.
             // Now we set EX to ((b << 16) >>> a & 0xFFFF).
-            excess_shadow =
-                Some(CPU::arithmetic_shift(CPU::arithmetic_shift(*b, -16), a as i8) & 0xFFFF);
+            excess_shadow = Some(((CPU::arithmetic_shift(*b, -16) >> (a as i8)) & 0xFFFF) as u16);
 
-            // Perform b <<< a
-            *b <<= a;
+            // Perform b >>> a
+            *b >>= a;
         }
         if let Some(v) = excess_shadow {
             self.excess = v;
@@ -170,8 +169,8 @@ impl instruction::visitor::InstructionVisitor for CPU {
         let mut excess_shadow = None;
         let a = self.resolve_operand(a).as_literal();
         if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
-            excess_shadow = Some(CPU::arithmetic_shift(*b, -16) >> a);
-            *b = CPU::arithmetic_shift(*b, a as i8);
+            excess_shadow = Some((CPU::arithmetic_shift(*b, -16) >> a) as u16);
+            *b = CPU::arithmetic_shift(*b, a as i8) as u16;
         }
         if let Some(v) = excess_shadow {
             self.excess = v;
@@ -181,8 +180,7 @@ impl instruction::visitor::InstructionVisitor for CPU {
         let mut excess_shadow = None;
         let a = self.resolve_operand(a).as_literal();
         if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
-            excess_shadow =
-                Some(CPU::arithmetic_shift(CPU::arithmetic_shift(*b, -(a as i8)), 16) & 0xFFFF);
+            excess_shadow = Some((CPU::arithmetic_shift(*b, -(a as i8)) >> a & 0xFFFF) as u16);
             *b <<= a;
         }
         if let Some(v) = excess_shadow {
@@ -473,18 +471,26 @@ impl CPU {
             }
         }
     }
-    fn arithmetic_shift(x: u16, num_bits: i8) -> u16 {
-        let shift_amount: u32 = num_bits as u32;
+    fn arithmetic_shift(x: u16, num_bits: i8) -> u32 {
+        let shift_amount: u32 = num_bits.abs() as u32;
+
+        if shift_amount > 32 {
+            // We present consistent behaviour: The shift evaluates to zero if the shift amount would overflow
+            // the data type. This is to avoid variance between machines.
+            return 0;
+        }
+
         let shift = if num_bits < 0 {
-            i16::wrapping_shl
+            i32::wrapping_shl
         } else if num_bits > 0 {
-            i16::wrapping_shr
+            i32::wrapping_shr
         } else {
-            return x;
+            return x as u32;
         };
 
-        let x = shift(x as i16, shift_amount);
-        x as u16
+        let s: i32 = (x as i16) as i32;
+        let ret = shift(s, shift_amount);
+        ret as u32
     }
 
     fn resolve_operand(&mut self, a: &instruction::Operand) -> ResolvedOperand {
@@ -865,7 +871,7 @@ mod tests {
         exec_basic_on_register!(cpu, SHR, A, 1);
         assert_ne!(cpu.registers.a, (-1i16 >> 1) as u16);
         assert_eq!(cpu.registers.a, 0x7FFF);
-        assert_eq!(cpu.excess, 0xFFFF);
+        assert_eq!(cpu.excess, 0x8000);
     }
 
     #[test]
