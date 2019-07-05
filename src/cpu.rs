@@ -156,7 +156,8 @@ impl instruction::visitor::InstructionVisitor for CPU {
 
             // Get a copy of b. We use this to calculate EX's value later.
             // Now we set EX to ((b << 16) >>> a & 0xFFFF).
-            excess_shadow = Some(((CPU::arithmetic_shift(*b, -16) >> (a as i8)) & 0xFFFF) as u16);
+            excess_shadow =
+                Some(((CPU::arithmetic_shift(*b as u32, -16) >> (a as i8)) & 0xFFFF) as u16);
 
             // Perform b >>> a
             *b >>= a;
@@ -169,8 +170,8 @@ impl instruction::visitor::InstructionVisitor for CPU {
         let mut excess_shadow = None;
         let a = self.resolve_operand(a).as_literal();
         if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
-            excess_shadow = Some((CPU::arithmetic_shift(*b, -16) >> a) as u16);
-            *b = CPU::arithmetic_shift(*b, a as i8) as u16;
+            excess_shadow = Some((CPU::arithmetic_shift(*b as u32, -16) >> a) as u16);
+            *b = CPU::arithmetic_shift(*b as u32, a as i8) as u16;
         }
         if let Some(v) = excess_shadow {
             self.excess = v;
@@ -180,7 +181,10 @@ impl instruction::visitor::InstructionVisitor for CPU {
         let mut excess_shadow = None;
         let a = self.resolve_operand(a).as_literal();
         if let ResolvedOperand::Reference(b) = self.resolve_operand(b) {
-            excess_shadow = Some((CPU::arithmetic_shift(*b, -(a as i8)) >> a & 0xFFFF) as u16);
+            excess_shadow = Some(
+                (CPU::arithmetic_shift(CPU::arithmetic_shift(*b as u32, -(a as i8)), 16) & 0xFFFF)
+                    as u16,
+            );
             *b <<= a;
         }
         if let Some(v) = excess_shadow {
@@ -304,6 +308,7 @@ impl instruction::visitor::InstructionVisitor for CPU {
         unimplemented!();
     }
     fn visit_iag(&mut self, a: &instruction::Operand) {
+        // Sets a to IA.
         let ia = self.interrupt_address;
         if let ResolvedOperand::Reference(a) = self.resolve_operand(a) {
             *a = ia;
@@ -471,7 +476,7 @@ impl CPU {
             }
         }
     }
-    fn arithmetic_shift(x: u16, num_bits: i8) -> u32 {
+    fn arithmetic_shift(x: u32, num_bits: i8) -> u32 {
         let shift_amount: u32 = num_bits.abs() as u32;
 
         if shift_amount > 32 {
@@ -882,5 +887,26 @@ mod tests {
         assert_eq!(cpu.registers.a, -4i16 as u16);
         assert_eq!(cpu.excess, 0);
     }
+    #[test]
+    fn test_shl() {
+        let mut cpu = CPU::new();
+        cpu.registers.a = 0x01;
+        exec_basic_on_register!(cpu, SHL, A, 2);
+        assert_eq!(cpu.registers.a, 4);
+        assert_eq!(cpu.excess, 0);
 
+        cpu.registers.a = 0xFFFF;
+        exec_basic_on_register!(cpu, SHL, A, 1);
+        assert_eq!(cpu.registers.a, 0xFFFE);
+        // We expect excess to have 0xFFFF in it, because:
+        // 0xFFFF << 1 = 0xFFFE
+        //
+        // Then, for the arithmetic right shift of 16:
+        // first step is: 0xFFFE >> 1 = 0xFFFF
+        // Then, v = 0xFFFF >> N for any N = 0xFFFF, as empty bits are 1-filled.
+        // TODO: We could set v to 0 for any N > 7, as if the shift were performed all at once. The relation
+        // above is what's observed in modern CPUs, which appear to behave so that performing M iterations of
+        // a a bitshift of N = a total bitshift of MxN
+        assert_eq!(cpu.excess, -1i16 as u16);
+    }
 }
