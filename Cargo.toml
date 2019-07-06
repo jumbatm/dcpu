@@ -1,7 +1,2 @@
-[package]
-name = "dcpu"
-version = "0.1.0"
-authors = ["jumbatm <30644300+jumbatm@users.noreply.github.com>"]
-edition = "2018"
-
-[dependencies]
+[workspace]
+members = [ "emulator", "assembler" ]
