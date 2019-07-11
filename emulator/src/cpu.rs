@@ -1,5 +1,5 @@
-mod instruction;
-mod ram;
+pub mod instruction;
+pub mod ram;
 
 use instruction::Instruction;
 use ram::Ram;

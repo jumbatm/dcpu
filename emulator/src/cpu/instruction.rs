@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BasicOp {
     SET,
     ADD,
@@ -29,7 +29,7 @@ pub enum BasicOp {
     STD,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SpecialOp {
     JSR,
     INT,
@@ -42,7 +42,7 @@ pub enum SpecialOp {
     HWI,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Instruction {
     Basic(BasicInstruction),
     Special(SpecialInstruction),
@@ -203,7 +203,7 @@ pub mod visitor {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Register {
     A,
     B,
@@ -218,7 +218,7 @@ pub enum Register {
     EX,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Operand {
     NextWordAsAddress,
     NextWordAsLiteral,
@@ -231,14 +231,14 @@ pub enum Operand {
     Pick,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct BasicInstruction {
     pub op: BasicOp,
     pub b: Operand,
     pub a: Operand,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SpecialInstruction {
     pub op: SpecialOp,
     pub a: Operand,

@@ -1,0 +1,27 @@
+SET PC, :main
+
+; Arguments:
+;   A: The nth fibonacci number to calculate to.
+;   Returns though Z
+:fib
+    SET B, 1
+    SET C, 1 
+    SET J, 0
+:loop_start
+    IFG J, A
+    SET PC, :loop_done 
+    SET X, B
+    ADD X, C 
+    SET B, C
+    SET C, X 
+    ADD J, 1
+    SET PC, :loop_start
+:loop_done
+    SET Z, A
+    SET PC, POP
+
+:main
+; call FIB(10)
+SET A, 10
+SET PUSH, PC
+SET PC, :fib
