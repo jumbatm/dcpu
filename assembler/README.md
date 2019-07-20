@@ -21,3 +21,14 @@ The final case is for the PICK instruction.
 SET A, PICK 0x123
 ```
 Here, the next word is set to 0x123.
+
+# Testing
+The integration tests for the assembler aren't handwritten. Instead, the expected outputs are first generated, manually verified, and then later changes are compared with the expected output. The check happens automatically with `cargo test`, but you need to manually run the generate step when required.
+
+## Running the generate step
+If you've made an update on purpose that makes a change to the instructions that are generated, or you've added a new test file, you need to run the generate step. To do this:
+
+```bash
+$ cd ./generate-assembler-tests
+$ cargo run
+```
