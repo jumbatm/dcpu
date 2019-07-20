@@ -1,0 +1,2 @@
+SET A, 0xF ; This fits within a single instruction.
+SET B, 0xFF ; This does not fit within a single instruction.

@@ -15,8 +15,7 @@ struct Opt {
 
 fn main() {
     for (input, output) in
-        testutil::get_test_dir_iter(PathBuf::from(std::env::var("ASSEMBLER_TEST_ROOT").unwrap()))
-            .unwrap()
+        testutil::get_test_dir_iter(PathBuf::from(testutil::get_assembler_test_dir())).unwrap()
     {
         println!(
             "Generating {} from {}",

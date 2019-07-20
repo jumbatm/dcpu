@@ -148,18 +148,12 @@ impl<T: Read> InstructionStream<T> {
         &mut self,
     ) -> Result<Option<ParsedInstruction>, ErrorType> {
         // Initially, we eat any leading whitespace.
-        loop {
-            self.lex.eat_whitespace()?;
-            if self.lex.peek_char().unwrap_or(b'\0') == b'\n' {
-                self.lex.eat_char().unwrap();
-            } else {
-                break;
-            }
-        }
+        self.lex.eat_whitespace(true)?;
+
         match self.lex.peek_char() {
             Some(b':') => {
                 if let Token::Label(lab) = self.lex.eat_label()? {
-                    self.lex.eat_whitespace()?;
+                    self.lex.eat_whitespace(false)?;
                     if self.lex.eat_char()?.unwrap_or(b'\0') != b'\n' {
                         return Err(self.lex.make_syntax_error());
                     }
@@ -181,27 +175,27 @@ impl<T: Read> InstructionStream<T> {
             _ => {}
         }
 
-        self.lex.eat_whitespace()?;
+        self.lex.eat_whitespace(true)?;
         let op = if let Token::Mnemonic(op) = self.lex.get_mnemonic()? {
             op
         } else {
             unreachable!();
         };
 
-        self.lex.eat_whitespace()?;
+        self.lex.eat_whitespace(false)?;
 
         let result;
         {
             let mut get_operand = |is_left: bool| -> Result<Token, ErrorType> {
                 if !is_left {
                     // Eat the separating comma.
-                    self.lex.eat_whitespace()?;
+                    self.lex.eat_whitespace(false)?;
                     if !self.lex.eat_char()?.unwrap_or(b'\0') == b',' {
                         return Err(self.lex.make_syntax_error());
                     }
-                    self.lex.eat_whitespace()?;
+                    self.lex.eat_whitespace(false)?;
                 }
-                self.lex.eat_whitespace()?;
+                self.lex.eat_whitespace(false)?;
 
                 self.lex.get_operand(is_left)
             };
@@ -222,7 +216,7 @@ impl<T: Read> InstructionStream<T> {
             result = ParsedInstruction { op, b, a };
 
             // Eat any trailing whitespace.
-            self.lex.eat_whitespace()?;
+            self.lex.eat_whitespace(false)?;
             // Expect a newline.
             if self.lex.eat_char()?.unwrap_or(b'\n') != b'\n' {
                 return Err(self.lex.make_syntax_error());
@@ -348,7 +342,8 @@ impl<T: Read> Lexer<T> {
     fn make_syntax_error(&self) -> ErrorType {
         ErrorType::SyntaxError(self.next_char)
     }
-    // Eat the current character. Returns the new current character.
+    /// Eat the current character. Returns the new current character. Comments are handled in this function: if
+    /// a newline is met, it is made to be the next character returned by eat_char.
     fn eat_char(&mut self) -> std::io::Result<Option<u8>> {
         self.current_char = self.next_char;
 
@@ -357,27 +352,25 @@ impl<T: Read> Lexer<T> {
             let n = Self::rewrap_char(self.source.next())?;
             if let Some(c) = n {
                 if c == b'\r' {
+                    // We don't deal with \r.
                     continue;
                 }
                 // Update the source position.
                 if c == b'\n' {
                     self.source_position.0 += 1;
                     self.source_position.1 = 0;
+                    comment = false;
                 } else {
                     self.source_position.1 += 1;
                 }
-                // Deal with comments, as needed.
-                if comment {
-                    if c == b'\n' {
-                        comment = false;
-                    }
-                    continue;
-                }
+
+                // Start a comment, if required.
                 if c == b';' {
                     comment = true;
                 }
+                self.next_char = n;
+
                 if !comment {
-                    self.next_char = n;
                     break;
                 }
             } else {
@@ -413,10 +406,10 @@ impl<T: Read> Lexer<T> {
 
     // Eat whitespace, leaving the lexer such that the next call to eat_char() will return the first
     // non-whitespace character.
-    fn eat_whitespace(&mut self) -> Result<(), ErrorType> {
+    fn eat_whitespace(&mut self, eat_newlines: bool) -> Result<(), ErrorType> {
         loop {
             if let Some(c) = self.peek_char() {
-                if !Self::is_space(c) {
+                if !(Self::is_space(c) || (eat_newlines && c == b'\n')) {
                     break;
                 }
                 self.eat_char()?;
@@ -668,10 +661,10 @@ impl<T: Read> Lexer<T> {
         }
         let mut result = self.eat_operand(left, false)?;
         let tail;
-        self.eat_whitespace()?;
+        self.eat_whitespace(false)?;
         if let Some(b'+') = self.peek_char() {
             self.eat_char()?;
-            self.eat_whitespace()?;
+            self.eat_whitespace(false)?;
             tail = self.eat_literal()?;
             if let Token::Literal(s) = tail {
                 if let Token::Register(r) = result {
@@ -683,7 +676,7 @@ impl<T: Read> Lexer<T> {
                 panic!("eat_literal did not return a literal.");
             }
         }
-        self.eat_whitespace()?;
+        self.eat_whitespace(false)?;
         if self.eat_char()?.unwrap_or(b'\0') != b']' {
             return Err(self.make_syntax_error());
         }
@@ -893,7 +886,7 @@ mod tests {
                 panic!();
             }
         }
-        lex.eat_whitespace()?;
+        lex.eat_whitespace(false)?;
         {
             let t = lex.eat_literal()?;
             if let Token::Literal(v) = t {
@@ -902,7 +895,7 @@ mod tests {
                 panic!();
             }
         }
-        lex.eat_whitespace()?;
+        lex.eat_whitespace(false)?;
         {
             let t = lex.eat_literal()?;
             if let Token::Literal(v) = t {
@@ -920,7 +913,7 @@ mod tests {
 
         macro_rules! expect {
             ($op:path, $expected:path) => {
-                lex.eat_whitespace()?;
+                lex.eat_whitespace(false)?;
                 if let Token::Mnemonic($op(m)) = lex.get_mnemonic().unwrap() {
                     assert_eq!(m, $expected);
                 } else {
@@ -973,7 +966,7 @@ mod tests {
         {
             macro_rules! expect {
                 ($expected:ident) => {
-                    lex.eat_whitespace()?;
+                    lex.eat_whitespace(false)?;
                     if let Token::Register(emulator::cpu::instruction::Register::$expected) =
                         lex.eat_register()?
                     {
@@ -1000,7 +993,7 @@ mod tests {
         {
             macro_rules! expect {
                 ($type:ident) => {
-                    lex.eat_whitespace()?;
+                    lex.eat_whitespace(false)?;
                     if let Token::$type = lex.eat_register()? {
                         assert!(true);
                     } else {
@@ -1021,14 +1014,14 @@ mod tests {
         let src = "A [B] [C + 10] PUSH POP";
         let mut lex = Lexer::from(src.as_bytes());
 
-        lex.eat_whitespace()?;
+        lex.eat_whitespace(false)?;
 
         if let Token::Register(emulator::cpu::instruction::Register::A) = lex.get_operand(true)? {
             assert!(true);
         } else {
             assert!(false);
         }
-        lex.eat_whitespace()?;
+        lex.eat_whitespace(false)?;
 
         if let Token::RegisterAsMemoryAddress(emulator::cpu::instruction::Register::B) =
             dbg!(lex.get_operand(true)?)
@@ -1038,7 +1031,7 @@ mod tests {
             assert!(false);
         }
 
-        lex.eat_whitespace()?;
+        lex.eat_whitespace(false)?;
 
         if let Token::RegisterPlusWord(emulator::cpu::instruction::Register::C, 10) =
             dbg!(lex.get_operand(true))?
@@ -1048,7 +1041,7 @@ mod tests {
             assert!(false);
         }
 
-        lex.eat_whitespace()?;
+        lex.eat_whitespace(false)?;
 
         if let Token::Push = lex.get_operand(true)? {
             assert!(true);
@@ -1067,14 +1060,14 @@ mod tests {
         let src = "A [B] [C + 10] POP PUSH";
         let mut lex = Lexer::from(src.as_bytes());
 
-        lex.eat_whitespace()?;
+        lex.eat_whitespace(false)?;
 
         if let Token::Register(emulator::cpu::instruction::Register::A) = lex.get_operand(true)? {
             assert!(true);
         } else {
             assert!(false);
         }
-        lex.eat_whitespace()?;
+        lex.eat_whitespace(false)?;
 
         if let Token::RegisterAsMemoryAddress(emulator::cpu::instruction::Register::B) =
             dbg!(lex.get_operand(false)?)
@@ -1084,7 +1077,7 @@ mod tests {
             assert!(false);
         }
 
-        lex.eat_whitespace()?;
+        lex.eat_whitespace(false)?;
 
         if let Token::RegisterPlusWord(emulator::cpu::instruction::Register::C, 10) =
             dbg!(lex.get_operand(false))?
@@ -1094,7 +1087,7 @@ mod tests {
             assert!(false);
         }
 
-        lex.eat_whitespace()?;
+        lex.eat_whitespace(false)?;
 
         if let Token::Pop = lex.get_operand(false)? {
             assert!(true);
@@ -1115,7 +1108,7 @@ mod tests {
 
         macro_rules! expect {
             ($lit:expr) => {
-                lex.eat_whitespace()?;
+                lex.eat_whitespace(false)?;
                 if let Token::Label(s) = lex.eat_label()? {
                     assert_eq!(s, $lit);
                 } else {

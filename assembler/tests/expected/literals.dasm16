@@ -1,0 +1,3 @@
+Ok(Inst(Basic(BasicInstruction { op: SET, b: Register(A), a: Literal(15) })))
+Ok(Inst(Basic(BasicInstruction { op: SET, b: Register(B), a: NextWordAsLiteral })))
+Ok(Data(255))
