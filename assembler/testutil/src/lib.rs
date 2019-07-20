@@ -45,3 +45,7 @@ pub fn get_test_dir_iter(
         })
         .into_iter())
 }
+
+pub fn get_assembler_test_dir() -> &'static str {
+    env!("ASSEMBLER_TEST_ROOT")
+}

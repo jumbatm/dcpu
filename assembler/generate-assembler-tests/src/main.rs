@@ -2,6 +2,7 @@ use assembler;
 use std::path::PathBuf;
 use structopt;
 use structopt::StructOpt;
+use testutil;
 
 /// A basic example
 #[derive(StructOpt, Debug)]
@@ -13,10 +14,9 @@ struct Opt {
 }
 
 fn main() {
-    for (input, output) in check_assembler::get_test_dir_iter(PathBuf::from(
-        std::env::var("ASSEMBLER_TEST_ROOT").unwrap(),
-    ))
-    .unwrap()
+    for (input, output) in
+        testutil::get_test_dir_iter(PathBuf::from(std::env::var("ASSEMBLER_TEST_ROOT").unwrap()))
+            .unwrap()
     {
         println!(
             "Generating {} from {}",

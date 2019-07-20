@@ -14,6 +14,7 @@ version = "0.1.0"
 dependencies = [
  "emulator 0.1.0",
  "structopt 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "testutil 0.1.0",
 ]
 
 [[package]]
@@ -29,14 +30,6 @@ dependencies = [
 name = "bitflags"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
-name = "check-assembler"
-version = "0.1.0"
-dependencies = [
- "assembler 0.1.0",
- "structopt 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
-]
 
 [[package]]
 name = "clap"
@@ -55,6 +48,15 @@ dependencies = [
 [[package]]
 name = "emulator"
 version = "0.1.0"
+
+[[package]]
+name = "generate-assembler-tests"
+version = "0.1.0"
+dependencies = [
+ "assembler 0.1.0",
+ "structopt 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "testutil 0.1.0",
+]
 
 [[package]]
 name = "heck"
@@ -119,6 +121,10 @@ dependencies = [
  "quote 0.6.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "testutil"
+version = "0.1.0"
 
 [[package]]
 name = "textwrap"

@@ -1,2 +1,2 @@
 [workspace]
-members = [ "emulator", "assembler", "assembler/check-assembler" ]
+members = [ "emulator", "assembler", "assembler/generate-assembler-tests", "assembler/testutil" ]
