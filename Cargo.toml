@@ -1,2 +1,2 @@
 [workspace]
-members = [ "emulator", "assembler" ]
+members = [ "emulator", "assembler", "assembler/check-assembler" ]
