@@ -568,11 +568,11 @@ mod tests {
 
     macro_rules! exec_basic_on_register {
         ($cpu:ident, $op:ident, $b:ident, $a:expr) => {
-            $cpu.execute(Instruction::Basic(BasicInstruction {
+            $cpu.execute(Instruction::Basic {
                 op: BasicOp::$op,
                 b: Operand::Register(Register::$b),
                 a: Operand::Literal($a),
-            }));
+            });
         };
     }
 

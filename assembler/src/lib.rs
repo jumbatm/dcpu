@@ -132,11 +132,11 @@ impl<T: Read> InstructionStream<T> {
             Op::Basic(op) => {
                 let b = self.convert_operand(parsed_instruction.b.unwrap())?;
                 let a = self.convert_operand(parsed_instruction.a)?;
-                Instruction::Basic(BasicInstruction { op, a, b })
+                Instruction::Basic { op, a, b }
             }
             Op::Special(op) => {
                 let a = self.convert_operand(parsed_instruction.a)?;
-                Instruction::Special(SpecialInstruction { op, a })
+                Instruction::Special { op, a }
             }
         })
     }

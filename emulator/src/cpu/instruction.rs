@@ -44,15 +44,15 @@ pub enum SpecialOp {
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Instruction {
-    Basic(BasicInstruction),
-    Special(SpecialInstruction),
+    Basic { op: BasicOp, b: Operand, a: Operand },
+    Special { op: SpecialOp, a: Operand },
 }
 
 impl Instruction {
     pub fn get_a(&self) -> &Operand {
         match self {
-            Instruction::Basic(basic) => &basic.a,
-            Instruction::Special(special) => &special.a,
+            Instruction::Basic { a, .. } => &a,
+            Instruction::Special { a, .. } => &a,
         }
     }
 }
@@ -102,101 +102,101 @@ pub mod visitor {
 
         fn visit(&mut self, inst: &Instruction) {
             match inst {
-                Instruction::Basic(inst) => match inst.op {
+                Instruction::Basic { op, a, b } => match op {
                     BasicOp::SET => {
-                        self.visit_set(&inst.b, &inst.a);
+                        self.visit_set(b, a);
                     }
                     BasicOp::ADD => {
-                        self.visit_add(&inst.b, &inst.a);
+                        self.visit_add(b, a);
                     }
                     BasicOp::SUB => {
-                        self.visit_sub(&inst.b, &inst.a);
+                        self.visit_sub(b, a);
                     }
                     BasicOp::MUL => {
-                        self.visit_mul(&inst.b, &inst.a);
+                        self.visit_mul(b, a);
                     }
                     BasicOp::MLI => {
-                        self.visit_mli(&inst.b, &inst.a);
+                        self.visit_mli(b, a);
                     }
                     BasicOp::DIV => {
-                        self.visit_div(&inst.b, &inst.a);
+                        self.visit_div(b, a);
                     }
                     BasicOp::DVI => {
-                        self.visit_dvi(&inst.b, &inst.a);
+                        self.visit_dvi(b, a);
                     }
                     BasicOp::MOD => {
-                        self.visit_mod(&inst.b, &inst.a);
+                        self.visit_mod(b, a);
                     }
                     BasicOp::MDI => {
-                        self.visit_mdi(&inst.b, &inst.a);
+                        self.visit_mdi(b, a);
                     }
                     BasicOp::AND => {
-                        self.visit_and(&inst.b, &inst.a);
+                        self.visit_and(b, a);
                     }
                     BasicOp::BOR => {
-                        self.visit_bor(&inst.b, &inst.a);
+                        self.visit_bor(b, a);
                     }
                     BasicOp::XOR => {
-                        self.visit_xor(&inst.b, &inst.a);
+                        self.visit_xor(b, a);
                     }
                     BasicOp::SHR => {
-                        self.visit_shr(&inst.b, &inst.a);
+                        self.visit_shr(b, a);
                     }
                     BasicOp::ASR => {
-                        self.visit_asr(&inst.b, &inst.a);
+                        self.visit_asr(b, a);
                     }
                     BasicOp::SHL => {
-                        self.visit_shl(&inst.b, &inst.a);
+                        self.visit_shl(b, a);
                     }
                     BasicOp::IFB => {
-                        self.visit_ifb(&inst.b, &inst.a);
+                        self.visit_ifb(b, a);
                     }
                     BasicOp::IFC => {
-                        self.visit_ifc(&inst.b, &inst.a);
+                        self.visit_ifc(b, a);
                     }
                     BasicOp::IFE => {
-                        self.visit_ife(&inst.b, &inst.a);
+                        self.visit_ife(b, a);
                     }
                     BasicOp::IFN => {
-                        self.visit_ifn(&inst.b, &inst.a);
+                        self.visit_ifn(b, a);
                     }
                     BasicOp::IFG => {
-                        self.visit_ifg(&inst.b, &inst.a);
+                        self.visit_ifg(b, a);
                     }
                     BasicOp::IFA => {
-                        self.visit_ifa(&inst.b, &inst.a);
+                        self.visit_ifa(b, a);
                     }
                     BasicOp::IFL => {
-                        self.visit_ifl(&inst.b, &inst.a);
+                        self.visit_ifl(b, a);
                     }
                     BasicOp::IFU => {
-                        self.visit_ifu(&inst.b, &inst.a);
+                        self.visit_ifu(b, a);
                     }
                     BasicOp::ADX => {
-                        self.visit_adx(&inst.b, &inst.a);
+                        self.visit_adx(b, a);
                     }
                     BasicOp::SBX => {
-                        self.visit_sbx(&inst.b, &inst.a);
+                        self.visit_sbx(b, a);
                     }
                     BasicOp::STI => {
-                        self.visit_sti(&inst.b, &inst.a);
+                        self.visit_sti(b, a);
                     }
                     BasicOp::STD => {
-                        self.visit_std(&inst.b, &inst.a);
+                        self.visit_std(b, a);
                     }
                 },
-                Instruction::Special(inst) => match inst.op {
+                Instruction::Special { op, a } => match op {
                     SpecialOp::JSR => {
-                        self.visit_jsr(&inst.a);
+                        self.visit_jsr(a);
                     }
-                    SpecialOp::INT => self.visit_int(&inst.a),
-                    SpecialOp::IAG => self.visit_iag(&inst.a),
-                    SpecialOp::IAS => self.visit_ias(&inst.a),
-                    SpecialOp::RFI => self.visit_rfi(&inst.a),
-                    SpecialOp::IAQ => self.visit_iaq(&inst.a),
-                    SpecialOp::HWN => self.visit_hwn(&inst.a),
-                    SpecialOp::HWQ => self.visit_hwq(&inst.a),
-                    SpecialOp::HWI => self.visit_hwi(&inst.a),
+                    SpecialOp::INT => self.visit_int(a),
+                    SpecialOp::IAG => self.visit_iag(a),
+                    SpecialOp::IAS => self.visit_ias(a),
+                    SpecialOp::RFI => self.visit_rfi(a),
+                    SpecialOp::IAQ => self.visit_iaq(a),
+                    SpecialOp::HWN => self.visit_hwn(a),
+                    SpecialOp::HWQ => self.visit_hwq(a),
+                    SpecialOp::HWI => self.visit_hwi(a),
                 },
             }
         }
@@ -231,74 +231,9 @@ pub enum Operand {
     Pick,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct BasicInstruction {
-    pub op: BasicOp,
-    pub b: Operand,
-    pub a: Operand,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SpecialInstruction {
-    pub op: SpecialOp,
-    pub a: Operand,
-}
-
 #[derive(Debug)]
 pub enum Error {
     BadInstruction,
-}
-
-impl std::convert::TryFrom<u16> for BasicInstruction {
-    type Error = Error;
-    fn try_from(val: u16) -> Result<Self, Self::Error> {
-        // Opcode is the lower 5 bits.
-        let op = match val & ((1 << 5) - 1) {
-            0x01 => BasicOp::SET,
-            0x02 => BasicOp::ADD,
-            0x03 => BasicOp::SUB,
-            0x04 => BasicOp::MUL,
-            0x05 => BasicOp::MLI,
-            0x06 => BasicOp::DIV,
-            0x07 => BasicOp::DVI,
-            0x08 => BasicOp::MOD,
-            0x09 => BasicOp::MDI,
-            0x0a => BasicOp::AND,
-            0x0b => BasicOp::BOR,
-            0x0c => BasicOp::XOR,
-            0x0d => BasicOp::SHR,
-            0x0e => BasicOp::ASR,
-            0x0f => BasicOp::SHL,
-            0x10 => BasicOp::IFB,
-            0x11 => BasicOp::IFC,
-            0x12 => BasicOp::IFE,
-            0x13 => BasicOp::IFN,
-            0x14 => BasicOp::IFG,
-            0x15 => BasicOp::IFA,
-            0x16 => BasicOp::IFL,
-            0x17 => BasicOp::IFU,
-            0x1a => BasicOp::ADX,
-            0x1b => BasicOp::SBX,
-            0x1e => BasicOp::STI,
-            0x1f => BasicOp::STD,
-            _ => return Err(Error::BadInstruction),
-        };
-
-        // Of the remaining 11 bits.
-        let ab = val >> 5;
-
-        // b is lower 5 bits.
-        let b: u8 = (ab & ((1 << 5) - 1)) as u8;
-
-        // a is the highest 6 bits.
-        let a: u8 = (ab >> 5) as u8;
-
-        Ok(BasicInstruction {
-            op,
-            a: Operand::from(a),
-            b: Operand::from(b),
-        })
-    }
 }
 
 impl std::convert::From<u8> for Operand {
@@ -343,37 +278,74 @@ impl std::convert::TryFrom<u8> for Register {
     }
 }
 
-impl std::convert::TryFrom<u16> for SpecialInstruction {
-    type Error = Error;
-    fn try_from(value: u16) -> Result<Self, Self::Error> {
-        use SpecialOp::*;
-        // aaaaaaooooo00000
-        let op = match value & ((1 << 5) - 1) << 5 {
-            0x01 => JSR,
-            0x08 => INT,
-            0x09 => IAG,
-            0x0a => IAS,
-            0x0b => RFI,
-            0x0c => IAQ,
-            0x10 => HWN,
-            0x11 => HWQ,
-            0x12 => HWI,
-            _ => return Err(Error::BadInstruction),
-        };
-
-        let a = Operand::from((value >> 10) as u8);
-
-        Ok(SpecialInstruction { op, a })
-    }
-}
-
 impl std::convert::TryFrom<u16> for Instruction {
     type Error = Error;
-    fn try_from(val: u16) -> Result<Self, Self::Error> {
-        if val & ((1 << 5) - 1) == 0 {
-            Ok(Instruction::Special(SpecialInstruction::try_from(val)?))
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        if value & 0x1F == 0 {
+            // aaaaaaooooo00000
+            let op = match value & ((1 << 5) - 1) << 5 {
+                0x01 => SpecialOp::JSR,
+                0x08 => SpecialOp::INT,
+                0x09 => SpecialOp::IAG,
+                0x0a => SpecialOp::IAS,
+                0x0b => SpecialOp::RFI,
+                0x0c => SpecialOp::IAQ,
+                0x10 => SpecialOp::HWN,
+                0x11 => SpecialOp::HWQ,
+                0x12 => SpecialOp::HWI,
+                _ => return Err(Error::BadInstruction),
+            };
+
+            let a = Operand::from((value >> 10) as u8);
+
+            Ok(Instruction::Special { op, a })
         } else {
-            Ok(Instruction::Basic(BasicInstruction::try_from(val)?))
+            // Opcode is the lower 5 bits.
+            let op = match value & ((1 << 5) - 1) {
+                0x01 => BasicOp::SET,
+                0x02 => BasicOp::ADD,
+                0x03 => BasicOp::SUB,
+                0x04 => BasicOp::MUL,
+                0x05 => BasicOp::MLI,
+                0x06 => BasicOp::DIV,
+                0x07 => BasicOp::DVI,
+                0x08 => BasicOp::MOD,
+                0x09 => BasicOp::MDI,
+                0x0a => BasicOp::AND,
+                0x0b => BasicOp::BOR,
+                0x0c => BasicOp::XOR,
+                0x0d => BasicOp::SHR,
+                0x0e => BasicOp::ASR,
+                0x0f => BasicOp::SHL,
+                0x10 => BasicOp::IFB,
+                0x11 => BasicOp::IFC,
+                0x12 => BasicOp::IFE,
+                0x13 => BasicOp::IFN,
+                0x14 => BasicOp::IFG,
+                0x15 => BasicOp::IFA,
+                0x16 => BasicOp::IFL,
+                0x17 => BasicOp::IFU,
+                0x1a => BasicOp::ADX,
+                0x1b => BasicOp::SBX,
+                0x1e => BasicOp::STI,
+                0x1f => BasicOp::STD,
+                _ => return Err(Error::BadInstruction),
+            };
+
+            // Of the remaining 11 bits.
+            let ab = value >> 5;
+
+            // b is lower 5 bits.
+            let b: u8 = (ab & ((1 << 5) - 1)) as u8;
+
+            // a is the highest 6 bits.
+            let a: u8 = (ab >> 5) as u8;
+
+            Ok(Instruction::Basic {
+                op,
+                a: Operand::from(a),
+                b: Operand::from(b),
+            })
         }
     }
 }
@@ -413,30 +385,30 @@ pub mod tests {
     #[test]
     fn test_basic_instruction() -> Result<(), Error> {
         /* SET B, 12 */
-        let inst = BasicInstruction::try_from(make_instruction(0x1, 0x1, 0x2D))?;
+        let inst = Instruction::try_from(make_instruction(0x1, 0x1, 0x2D))?;
         assert_eq!(
             inst,
-            BasicInstruction {
+            Instruction::Basic {
                 op: BasicOp::SET,
                 b: Operand::Register(Register::B),
                 a: Operand::Literal(12),
             }
         );
         /* ADD B, 1: 0x02 0x0, 0x22 */
-        let inst = BasicInstruction::try_from(make_instruction(0x02, 0x0, 0x22))?;
+        let inst = Instruction::try_from(make_instruction(0x02, 0x0, 0x22))?;
         assert_eq!(
             inst,
-            BasicInstruction {
+            Instruction::Basic {
                 op: BasicOp::ADD,
                 b: Operand::Register(Register::A),
                 a: Operand::Literal(1),
             }
         );
         /* SUB C, -1 */
-        let inst = BasicInstruction::try_from(make_instruction(0x3, 0x2, 0x20))?;
+        let inst = Instruction::try_from(make_instruction(0x3, 0x2, 0x20))?;
         assert_eq!(
             inst,
-            BasicInstruction {
+            Instruction::Basic {
                 op: BasicOp::SUB,
                 b: Operand::Register(Register::C),
                 a: Operand::Literal(unsafe { std::mem::transmute(-1i8) }),
@@ -444,20 +416,20 @@ pub mod tests {
         );
 
         /* MUL X, 8 */
-        let inst = BasicInstruction::try_from(make_instruction(0x4, 0x3, 0x29))?;
+        let inst = Instruction::try_from(make_instruction(0x4, 0x3, 0x29))?;
         assert_eq!(
             inst,
-            BasicInstruction {
+            Instruction::Basic {
                 op: BasicOp::MUL,
                 b: Operand::Register(Register::X),
                 a: Operand::Literal(8),
             }
         );
         /* MLI Y, 30 */
-        let inst = BasicInstruction::try_from(make_instruction(0x5, 0x4, 0x3f))?;
+        let inst = Instruction::try_from(make_instruction(0x5, 0x4, 0x3f))?;
         assert_eq!(
             inst,
-            BasicInstruction {
+            Instruction::Basic {
                 op: BasicOp::MLI,
                 b: Operand::Register(Register::Y),
                 a: Operand::Literal(30),
