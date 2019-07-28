@@ -1,9 +1,9 @@
 use assembler;
-use testutil;
+use integration_tester;
 #[test]
 fn run_check_assembler() {
     for (case, expected) in
-        testutil::get_test_dir_iter(std::path::PathBuf::from(testutil::get_assembler_test_dir()))
+        integration_tester::get_test_dir_iter(std::path::PathBuf::from(assembler::integration_tests::get_root()))
             .unwrap()
             .map(|(case_path, expected_path)| {
                 (

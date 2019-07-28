@@ -5,3 +5,4 @@ authors = ["jumbatm <30644300+jumbatm@users.noreply.github.com>"]
 edition = "2018"
 
 [dependencies]
+integration_tester = { path = "../integration_tester" }

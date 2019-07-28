@@ -1,21 +1,10 @@
 use assembler;
 use std::path::PathBuf;
-use structopt;
-use structopt::StructOpt;
-use testutil;
-
-/// A basic example
-#[derive(StructOpt, Debug)]
-#[structopt(name = "basic")]
-struct Opt {
-    /// Output file
-    #[structopt(parse(from_os_str))]
-    output: PathBuf,
-}
+use integration_tester;
 
 fn main() {
     for (input, output) in
-        testutil::get_test_dir_iter(PathBuf::from(testutil::get_assembler_test_dir())).unwrap()
+        integration_tester::get_test_dir_iter(PathBuf::from(assembler::integration_tests::get_root())).unwrap()
     {
         println!(
             "Generating {} from {}",

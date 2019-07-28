@@ -871,6 +871,13 @@ impl<T: Read> std::convert::From<T> for Lexer<T> {
     }
 }
 
+// #[cfg(test)] // TODO: Need to find a way to yhave generate-assembler-tests define cfg(test) when it runs.
+pub mod integration_tests {
+    pub fn get_root() -> &'static str {
+        env!("ASSEMBLER_TEST_ROOT")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -8,5 +8,5 @@ edition = "2018"
 
 [dependencies]
 emulator = { path = "../emulator" }
-testutil = { path = "./testutil" }
+integration_tester = { path = "../integration_tester" }
 structopt = "0.2.18"
