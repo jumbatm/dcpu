@@ -4,7 +4,7 @@ use integration_tester;
 
 fn main() {
     for (input, output) in
-        integration_tester::get_test_dir_iter(PathBuf::from(assembler::integration_tests::get_root())).unwrap()
+        integration_tester::get_default_test_layout(PathBuf::from(assembler::integration_tests::get_root())).unwrap()
     {
         println!(
             "Generating {} from {}",

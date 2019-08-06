@@ -3,7 +3,7 @@ use integration_tester;
 #[test]
 fn run_check_assembler() {
     for (case, expected) in
-        integration_tester::get_test_dir_iter(std::path::PathBuf::from(assembler::integration_tests::get_root()))
+        integration_tester::get_default_test_layout(std::path::PathBuf::from(assembler::integration_tests::get_root()))
             .unwrap()
             .map(|(case_path, expected_path)| {
                 (

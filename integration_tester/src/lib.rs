@@ -1,5 +1,40 @@
+pub trait IntegrationTester {
+    fn check(mut input: impl std::io::Read) -> bool {
+        let output = Self::generate(&input);
+        let mut input_str = String::new();
+        input.read_to_string(&mut input_str).unwrap();
+        input_str == output
+    }
+
+    /// Given some input, generate the corresponding string to compare. This method is invoked for checking,
+    /// too.
+    fn generate(input: &impl std::io::Read) -> String;
+}
+
+pub fn run_check<T: IntegrationTester>(input_output_iter: impl Iterator<Item = (std::path::PathBuf, std::path::PathBuf)>) -> Result<(), String> {
+    for (input, output) in input_output_iter {
+        let actual = T::generate(&std::fs::File::open(input).unwrap());
+        let expected = std::fs::read_to_string(output).unwrap();
+
+        if actual != expected {
+            // TODO: Generate diff?
+            return Err(expected);
+        } 
+    }
+    Ok(())
+}
+
+pub fn run_generate<T: IntegrationTester>(input_output_iter: impl Iterator<Item = (std::path::PathBuf, std::path::PathBuf)>) {
+    for (input, output) in input_output_iter {
+        let input = std::fs::File::open(input).unwrap();
+        let mut output = std::fs::File::create(output).unwrap();
+        use std::io::Write;
+        output.write(T::generate(&input).as_bytes()).unwrap();
+    }
+}
+
 /// Prepares the test directory.
-pub fn get_test_dir_iter(
+pub fn get_default_test_layout(
     test_inputs: std::path::PathBuf,
 ) -> Result<impl Iterator<Item = (std::path::PathBuf, std::path::PathBuf)>, std::io::Error> {
     // Check to make sure the test directory exists and that it's a folder.
