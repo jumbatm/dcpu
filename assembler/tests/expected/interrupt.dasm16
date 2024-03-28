@@ -1,0 +1,1 @@
+Ok(Inst(Special { op: INT, a: Literal(10) }))
